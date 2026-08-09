@@ -1,0 +1,25 @@
+# Normalize line endings. LF is stored in the repo; the rules below pin the
+# checkout form so scripts stay runnable on every platform.
+
+# Default: treat as text and normalize to LF in the repo.
+* text=auto eol=lf
+
+# Source / text — LF everywhere (editors handle it fine on Windows).
+*.py    text eol=lf
+*.md    text eol=lf
+*.txt   text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.sh    text eol=lf
+
+# Windows scripts — keep CRLF so they run correctly on Windows.
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.vbs   text eol=crlf
+
+# Binary assets — never convert.
+*.ico   binary
+*.png   binary
+*.icns  binary
+*.db    binary
