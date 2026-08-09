@@ -1,0 +1,11 @@
+# Runtime dependencies. Install with:  python -m pip install -r requirements.txt
+# Platform markers pull in only what each OS needs.
+pystray>=0.19
+Pillow>=10
+
+# macOS: frontmost app + idle detection
+pyobjc-framework-Cocoa>=10 ; sys_platform == "darwin"
+pyobjc-framework-Quartz>=10 ; sys_platform == "darwin"
+
+# Linux (X11): active window detection (idle uses libXss via ctypes)
+python-xlib>=0.33 ; sys_platform == "linux"

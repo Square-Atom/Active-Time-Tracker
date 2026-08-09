@@ -1,0 +1,4 @@
+# Build-time dependencies (to produce the standalone app).
+# Install with:  python -m pip install -r requirements-build.txt
+-r requirements.txt
+pyinstaller>=6.10
