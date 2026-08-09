@@ -43,8 +43,10 @@ class RangeState:
     """Tracks the selected date range and supports prev/next navigation."""
 
     def __init__(self):
-        self.mode = "day"  # 'day' | 'week' | 'month' | 'year'
+        self.mode = "day"  # 'day' | 'week' | 'month' | 'year' | 'custom'
         self.anchor = dt.date.today()
+        self.custom_start: dt.date | None = None
+        self.custom_end: dt.date | None = None
 
     def bounds(self) -> tuple[str, str]:
         if self.mode == "day":
@@ -55,6 +57,9 @@ class RangeState:
         elif self.mode == "year":
             start = self.anchor.replace(month=1, day=1)
             end = self.anchor.replace(month=12, day=31)
+        elif self.mode == "custom":
+            start = self.custom_start or dt.date.today()
+            end = self.custom_end or start
         else:  # month
             start = self.anchor.replace(day=1)
             last = calendar.monthrange(self.anchor.year, self.anchor.month)[1]
@@ -74,6 +79,8 @@ class RangeState:
 
     @property
     def is_multiday(self) -> bool:
+        if self.mode == "custom":
+            return self.custom_start != self.custom_end
         return self.mode in ("week", "month", "year")
 
     def label(self) -> str:
@@ -91,6 +98,13 @@ class RangeState:
             return f"{sd.strftime('%b %d')} – {ed.strftime('%b %d, %Y')}"
         if self.mode == "year":
             return self.anchor.strftime("%Y")
+        if self.mode == "custom":
+            s, e = self.bounds()
+            sd = dt.date.fromisoformat(s)
+            ed = dt.date.fromisoformat(e)
+            if sd == ed:
+                return sd.strftime("%b %d, %Y")
+            return f"{sd.strftime('%b %d, %Y')} – {ed.strftime('%b %d, %Y')}"
         return self.anchor.strftime("%B %Y")
 
     def shift(self, direction: int) -> None:
@@ -102,6 +116,11 @@ class RangeState:
             year = self.anchor.year + direction
             day = min(self.anchor.day, calendar.monthrange(year, self.anchor.month)[1])
             self.anchor = self.anchor.replace(year=year, day=day)
+        elif self.mode == "custom":
+            if self.custom_start and self.custom_end:
+                span = (self.custom_end - self.custom_start) + dt.timedelta(days=1)
+                self.custom_start += span * direction
+                self.custom_end += span * direction
         else:
             month = self.anchor.month - 1 + direction
             year = self.anchor.year + month // 12
@@ -181,9 +200,11 @@ class Dashboard:
         seg.pack(side="left")
         self.seg_buttons = {}
         for mode, text in (("day", "Today"), ("week", "This Week"),
-                           ("month", "This Month"), ("year", "This Year")):
-            b = ttk.Button(seg, text=text, style="Seg.TButton",
-                           command=lambda m=mode: self._set_mode(m))
+                           ("month", "This Month"), ("year", "This Year"),
+                           ("custom", "Custom Range")):
+            cmd = self._open_custom_range if mode == "custom" \
+                else (lambda m=mode: self._set_mode(m))
+            b = ttk.Button(seg, text=text, style="Seg.TButton", command=cmd)
             b.pack(side="left", padx=(0, 6))
             self.seg_buttons[mode] = b
 
@@ -276,6 +297,112 @@ class Dashboard:
         self.range.shift(direction)
         self.selected_app = None
         self.refresh()
+
+    def _open_custom_range(self) -> None:
+        if self.range.custom_start and self.range.custom_end:
+            s0, e0 = self.range.custom_start, self.range.custom_end
+        else:
+            e0 = dt.date.today()
+            s0 = e0 - dt.timedelta(days=6)
+        result = self._ask_custom_range(s0, e0)
+        if result is None:
+            return  # cancelled — leave the current view unchanged
+        start, end = result
+        self.range.mode = "custom"
+        self.range.custom_start = start
+        self.range.custom_end = end
+        self.selected_app = None
+        self.refresh()
+
+    def _ask_custom_range(self, s0: dt.date, e0: dt.date):
+        """Modal date-range picker. Returns (start, end) dates or None."""
+        dlg = tk.Toplevel(self.root)
+        dlg.title("Custom range")
+        dlg.configure(bg=BG)
+        dlg.resizable(False, False)
+        dlg.transient(self.root)
+        result = {"val": None}
+
+        wrap = tk.Frame(dlg, bg=BG)
+        wrap.pack(fill="both", expand=True, padx=20, pady=16)
+        tk.Label(wrap, text="Show statistics for a date range",
+                 bg=BG, fg=FG, font=("Segoe UI Semibold", 12)).grid(
+            row=0, column=0, columnspan=2, sticky="w")
+
+        from_var = tk.StringVar(value=s0.isoformat())
+        to_var = tk.StringVar(value=e0.isoformat())
+
+        def _entry(row, label, var):
+            tk.Label(wrap, text=label, bg=BG, fg=FG, font=("Segoe UI", 10)).grid(
+                row=row, column=0, sticky="w", pady=(12 if row == 1 else 6, 0))
+            e = tk.Entry(wrap, textvariable=var, width=14, bg=PANEL, fg=FG,
+                         insertbackground=FG, borderwidth=0, highlightthickness=1,
+                         highlightbackground="#3a3c52", font=("Consolas", 11),
+                         justify="center")
+            e.grid(row=row, column=1, sticky="e", pady=(12 if row == 1 else 6, 0))
+            return e
+
+        first = _entry(1, "From", from_var)
+        _entry(2, "To", to_var)
+        tk.Label(wrap, text="Format: YYYY-MM-DD", bg=BG, fg=MUTED,
+                 font=("Segoe UI", 8)).grid(row=3, column=0, columnspan=2,
+                                            sticky="w", pady=(4, 0))
+
+        presets = tk.Frame(wrap, bg=BG)
+        presets.grid(row=4, column=0, columnspan=2, sticky="w", pady=(10, 0))
+
+        def set_last(days):
+            today = dt.date.today()
+            from_var.set((today - dt.timedelta(days=days - 1)).isoformat())
+            to_var.set(today.isoformat())
+
+        for text, days in (("Last 7 days", 7), ("Last 30 days", 30), ("Last 90 days", 90)):
+            b = tk.Label(presets, text=text, bg=PANEL, fg=FG, font=("Segoe UI", 8),
+                         padx=8, pady=3, cursor="hand2")
+            b.pack(side="left", padx=(0, 6))
+            b.bind("<Button-1>", lambda e, d=days: set_last(d))
+
+        err = tk.Label(wrap, text="", bg=BG, fg="#ff8b94", font=("Segoe UI", 8))
+        err.grid(row=5, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
+        def ok():
+            try:
+                s = dt.date.fromisoformat(from_var.get().strip())
+                e = dt.date.fromisoformat(to_var.get().strip())
+            except ValueError:
+                err.configure(text="Please enter valid dates as YYYY-MM-DD.")
+                return
+            if s > e:
+                s, e = e, s
+            result["val"] = (s, e)
+            dlg.destroy()
+
+        btns = tk.Frame(wrap, bg=BG)
+        btns.grid(row=6, column=0, columnspan=2, sticky="e", pady=(14, 0))
+        tk.Button(btns, text="Cancel", command=dlg.destroy, bg=PANEL, fg=FG,
+                  relief="flat", padx=14, pady=4, cursor="hand2").pack(side="right", padx=(0, 8))
+        tk.Button(btns, text="Show", command=ok, bg=ACCENT, fg="#12131c",
+                  relief="flat", padx=16, pady=4, cursor="hand2",
+                  font=("Segoe UI Semibold", 10)).pack(side="right")
+
+        dlg.bind("<Return>", lambda e: ok())
+        dlg.bind("<Escape>", lambda e: dlg.destroy())
+
+        dlg.update_idletasks()
+        rx, ry = self.root.winfo_rootx(), self.root.winfo_rooty()
+        rw, rh = self.root.winfo_width(), self.root.winfo_height()
+        if rw <= 1:
+            rx = ry = 0
+            rw, rh = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
+        x = rx + (rw - dlg.winfo_width()) // 2
+        y = ry + (rh - dlg.winfo_height()) // 3
+        dlg.geometry(f"+{max(0, x)}+{max(0, y)}")
+
+        first.focus_set()
+        first.select_range(0, "end")
+        dlg.grab_set()
+        dlg.wait_window()
+        return result["val"]
 
     def _on_app_select(self, _event=None) -> None:
         sel = self.app_tree.selection()
@@ -390,7 +517,7 @@ class Dashboard:
         panes = self.main_paned.panes()
         if self.range.is_multiday:
             self.trend_title.configure(
-                text="MONTHLY TREND" if self.range.mode == "year" else "DAILY TREND")
+                text="MONTHLY TREND" if self._trend_is_monthly() else "DAILY TREND")
             if str(self.trend_frame) not in panes:
                 self.main_paned.add(self.trend_frame, weight=1)
                 self.root.after(10, self._apply_trend_height)
@@ -455,27 +582,43 @@ class Dashboard:
             c.create_text(bar_x0 + bw + 6, y, text=fmt_duration(val), fill=MUTED,
                           anchor="w", font=("Segoe UI", 9))
 
-    def _trend_bars(self) -> list[tuple[str, float, bool]]:
-        """(label, seconds, is_current) buckets: monthly for year, else daily."""
-        today = dt.date.today()
+    _MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    def _trend_is_monthly(self) -> bool:
+        """Bucket by month for the year view and for long custom ranges."""
         if self.range.mode == "year":
-            year = self.range.anchor.year
-            sums = [0.0] * 12
-            for day, secs in self._data_trend.items():
-                d = dt.date.fromisoformat(day)
-                if d.year == year:
-                    sums[d.month - 1] += secs
-            months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-            return [(months[m], sums[m],
-                     year == today.year and (m + 1) == today.month) for m in range(12)]
+            return True
+        if self.range.mode == "custom":
+            return len(self.range.days()) > 62
+        return False
+
+    def _trend_bars(self) -> list[tuple[str, float, bool]]:
+        """(label, seconds, is_current) buckets: monthly or daily per range."""
+        today = dt.date.today()
+        days = self.range.days()
+        if self._trend_is_monthly():
+            buckets: dict[tuple[int, int], float] = {}
+            order: list[tuple[int, int]] = []
+            for d in days:
+                key = (d.year, d.month)
+                if key not in buckets:
+                    buckets[key] = 0.0
+                    order.append(key)
+                buckets[key] += self._data_trend.get(d.isoformat(), 0.0)
+            multi_year = len({y for y, _ in order}) > 1
+            out = []
+            for (y, m) in order:
+                lbl = f"{self._MONTHS[m - 1]}'{y % 100:02d}" if multi_year else self._MONTHS[m - 1]
+                out.append((lbl, buckets[(y, m)], y == today.year and m == today.month))
+            return out
         bars = []
-        for d in self.range.days():
+        for d in days:
             v = self._data_trend.get(d.isoformat(), 0.0)
             is_today = d == today
             if self.range.mode == "week":
                 lbl = d.strftime("%a")
-            else:  # month
+            else:  # month / short custom: sparse day-number labels
                 lbl = str(d.day) if (d.day == 1 or d.day % 5 == 0 or is_today) else ""
             bars.append((lbl, v, is_today))
         return bars
