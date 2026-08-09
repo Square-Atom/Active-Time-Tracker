@@ -28,6 +28,26 @@ BAR_COLORS = [
 ]
 
 
+def _elide_label(label: str, limit: int = 30) -> str:
+    """Shorten a chart label, keeping the end (filename) and cutting paths on a
+    folder boundary so the result stays readable."""
+    if len(label) <= limit:
+        return label
+    # Prefer eliding whole path components: …/parent/file.ext
+    parts = label.replace("\\", "/").split("/")
+    if len(parts) > 1:
+        tail = parts[-1]
+        for i in range(len(parts) - 2, 0, -1):
+            candidate = "/".join(parts[i:])
+            if len(candidate) + 1 > limit:
+                break
+            tail = candidate
+        if len(tail) + 1 <= limit:
+            return "…/" + tail
+        return "…" + tail[-(limit - 1):]
+    return "…" + label[-(limit - 1):]
+
+
 def fmt_duration(seconds: float) -> str:
     s = int(round(seconds))
     h, rem = divmod(s, 3600)
@@ -574,7 +594,7 @@ class Dashboard:
         for i, (label, val) in enumerate(items):
             y = pad + i * row_h + row_h / 2
             color = BAR_COLORS[i % len(BAR_COLORS)]
-            text = label if len(label) <= 22 else "…" + label[-21:]
+            text = _elide_label(label)
             c.create_text(pad, y, text=text, fill=FG, anchor="w", font=("Segoe UI", 9))
             bw = max(2, bar_max * (val / maxv))
             c.create_rectangle(bar_x0, y - row_h * 0.28, bar_x0 + bw, y + row_h * 0.28,

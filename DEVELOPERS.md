@@ -121,6 +121,20 @@ Edit, Aseprite, Krita, Clip Studio, Blender, After Effects, Illustrator, VS Code
 Visual Studio, Sublime, Notepad(++), Obsidian, and Word/Excel/PowerPoint.
 Browsers and Explorer default to app-level only.
 
+**Same-named files.** `parse_file` records the fullest identity the title
+offers, so two `design.psd` files in different folders don't merge:
+
+1. a **full path**, when the title shows a rooted one (`path_ext_rule` /
+   `GENERIC_PATH_RE`) — e.g. Notepad++, Blender, Krita;
+2. otherwise **`folder/file`**, when the app names its project/workspace via a
+   `(?P<folder>…)` group — e.g. VS Code, Visual Studio, Obsidian;
+3. otherwise the **bare filename**.
+
+Apps whose titles show only a filename (Photoshop is the notable one) can't be
+disambiguated from the window title at all — those still merge. Separating them
+would need an app-specific integration (e.g. a Photoshop script reporting the
+active document path).
+
 Right-clicking an app in the dashboard → **Track files for this app** writes
 `file_rules`, keyed by the **exe name** (lowercase):
 
@@ -144,6 +158,8 @@ as one app in reports. Applied at read time (non-destructive).
   interpreter process), detected by PID.
 * **Photoshop / tabbed apps:** modern versions sometimes show only the app name
   in the main window title (the filename lives on a document tab). When the title
-  has no filename, time is still counted at the app level.
+  has no filename, time is still counted at the app level. When it shows only a
+  bare filename, two same-named files in different folders are counted together
+  (see [File-tracking rules](#file-tracking-rules)).
 * Time is credited in ~1-second steps, capped per tick so sleep/wake gaps don't
   over-count.

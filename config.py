@@ -91,25 +91,60 @@ def ext_rule(*exts: str) -> str:
     return rf'(?:.*[{sep}]|^)\s*(?P<file>[^\\/:*?"<>|\[\]]+?\.(?:{group}))'
 
 
+def path_ext_rule(*exts: str) -> str:
+    """Like `ext_rule`, but captures a *full path* when the title shows one.
+
+    Only matches when the token is rooted (``C:\\…``, ``/…`` or ``~/…``), so two
+    same-named files in different folders stay distinct. Pair it before the
+    plain `ext_rule` so bare filenames still work as a fallback.
+    """
+    group = "|".join(exts)
+    return (rf'(?P<file>(?:[A-Za-z]:[\\/]|\\\\|/|~[\\/])'
+            rf'[^:*?"<>|\r\n\[\]]*?\.(?:{group}))')
+
+
+# Generic fallbacks, tried in order: a rooted path first, then a bare filename.
+GENERIC_PATH_RE = re.compile(
+    r'(?P<file>(?:[A-Za-z]:[\\/]|\\\\|/|~[\\/])[^:*?"<>|\r\n\[\]]*?\.[A-Za-z0-9]{1,6})')
+GENERIC_FILE_RE = re.compile(r'(?P<file>[^\\/:*?"<>|\r\n]+\.[A-Za-z0-9]{1,6})')
+
+
 # Per-app rules for extracting the open file from the window title.
 #   list of regex patterns -> first pattern with a named group `file` wins
 #   ["app"]                 -> track at app level only (no per-file split)
 #   (missing / null)        -> use GENERIC_FILE_RE fallback
 DEFAULT_FILE_RULES: dict[str, list[str]] = {
-    "code.exe": [r"^[●•\*\s]*(?P<file>.+?)\s+-\s+.*Visual Studio Code$"],
-    "devenv.exe": [r"^(?P<file>.+?)\s+-\s+Microsoft Visual Studio"],
+    # Editors that name the workspace/project: capture it as `folder` so two
+    # same-named files in different projects stay separate.
+    # `(?:(?!\s-\s).)+` = "anything up to the next ' - ' separator", so
+    # hyphenated names (my-file.py, Work-Time-Tracker) survive intact.
+    "code.exe": [
+        r"^[●•\*\s]*(?P<file>.+?)\s+-\s+(?P<folder>(?:(?!\s-\s).)+)\s+-\s+.*Visual Studio Code$",
+        r"^[●•\*\s]*(?P<file>.+?)\s+-\s+.*Visual Studio Code$",
+    ],
+    "devenv.exe": [
+        r"^(?P<file>.+?)\s+-\s+(?P<folder>(?:(?!\s-\s).)+)\s+-\s+Microsoft Visual Studio",
+        r"^(?P<file>.+?)\s+-\s+Microsoft Visual Studio",
+    ],
     "sublime_text.exe": [r"^(?P<file>.+?)\s+.\s+.*Sublime Text$"],
-    "notepad++.exe": [r"^\*?(?P<file>.+?) - Notepad\+\+"],
+    "notepad++.exe": [r"^\*?(?P<file>.+?) - Notepad\+\+"],  # title carries full path
     "notepad.exe": [r"^\*?(?P<file>.+?) - Notepad$"],
-    "obsidian.exe": [r"^(?P<file>.+?) - .* - Obsidian$"],
-    "pyxeledit.exe": [ext_rule("pyxel")],
-    "aseprite.exe": [ext_rule("aseprite", "ase", "png", "gif", "bmp", "jpe?g")],
-    "photoshop.exe": [ext_rule("psd", "psb", "png", "jpe?g", "tiff?", "gif", "webp", "bmp")],
-    "illustrator.exe": [ext_rule("ai", "svg", "pdf", "eps")],
-    "krita.exe": [ext_rule("kra", "png", "jpe?g", "psd", "tiff?")],
-    "clipstudiopaint.exe": [ext_rule("clip", "png", "psd")],
-    "blender.exe": [ext_rule("blend")],
-    "afterfx.exe": [ext_rule("aep")],
+    "obsidian.exe": [r"^(?P<file>.+?) - (?P<folder>(?:(?!\s-\s).)+) - Obsidian$",
+                     r"^(?P<file>.+?) - .* - Obsidian$"],
+    # Creative apps: prefer a full path when the title shows one, else filename.
+    "pyxeledit.exe": [path_ext_rule("pyxel"), ext_rule("pyxel")],
+    "aseprite.exe": [path_ext_rule("aseprite", "ase", "png", "gif", "bmp", "jpe?g"),
+                     ext_rule("aseprite", "ase", "png", "gif", "bmp", "jpe?g")],
+    "photoshop.exe": [path_ext_rule("psd", "psb", "png", "jpe?g", "tiff?", "gif", "webp", "bmp"),
+                      ext_rule("psd", "psb", "png", "jpe?g", "tiff?", "gif", "webp", "bmp")],
+    "illustrator.exe": [path_ext_rule("ai", "svg", "pdf", "eps"),
+                        ext_rule("ai", "svg", "pdf", "eps")],
+    "krita.exe": [path_ext_rule("kra", "png", "jpe?g", "psd", "tiff?"),
+                  ext_rule("kra", "png", "jpe?g", "psd", "tiff?")],
+    "clipstudiopaint.exe": [path_ext_rule("clip", "png", "psd"),
+                            ext_rule("clip", "png", "psd")],
+    "blender.exe": [path_ext_rule("blend"), ext_rule("blend")],
+    "afterfx.exe": [path_ext_rule("aep"), ext_rule("aep")],
     "winword.exe": [r"^(?P<file>.+?) - Word$"],
     "excel.exe": [r"^(?P<file>.+?) - Excel$"],
     "powerpnt.exe": [r"^(?P<file>.+?) - PowerPoint$"],
@@ -122,9 +157,6 @@ DEFAULT_FILE_RULES: dict[str, list[str]] = {
     "firefox.exe": ["app"],
     "explorer.exe": ["app"],
 }
-
-# Fallback: grab the first filename-looking token (name + short extension).
-GENERIC_FILE_RE = re.compile(r'(?P<file>[^\\/:*?"<>|\r\n]+\.[A-Za-z0-9]{1,6})')
 
 DEFAULTS = {
     "idle_timeout_seconds": 10,
@@ -242,25 +274,46 @@ def friendly_name(exe: str) -> str:
 
 
 def parse_file(exe: str, title: str, rules: dict[str, list[str]]) -> str:
-    """Extract the open file from a window title. '' means app-level only."""
+    """Extract the open file from a window title. '' means app-level only.
+
+    Returns the fullest identity the title offers, so same-named files in
+    different places stay distinct: a full path when the title shows one, else
+    ``folder/file`` when the app names its project/workspace, else the bare
+    filename (all a title like Photoshop's provides).
+    """
     if not title:
         return ""
     patterns = rules.get(exe)
     if patterns == ["app"]:
         return ""
-    if patterns == ["auto"]:
-        use = [GENERIC_FILE_RE.pattern]
+    generic = [GENERIC_PATH_RE.pattern, GENERIC_FILE_RE.pattern]
+    if patterns == ["auto"] or not patterns:
+        use = generic
     else:
-        use = patterns if patterns else [GENERIC_FILE_RE.pattern]
+        use = patterns
     for pat in use:
         try:
             m = re.search(pat, title)
         except re.error:
             continue
-        if m and m.groupdict().get("file"):
-            name = m.group("file").strip().strip("*").strip()
-            # Drop leading unsaved/dirty markers some editors prepend.
-            name = name.lstrip("●•*—- ").strip()
-            if name:
-                return name
+        if not m or not m.groupdict().get("file"):
+            continue
+        name = _clean_token(m.group("file"))
+        if not name:
+            continue
+        folder = _clean_token(m.groupdict().get("folder") or "")
+        # Qualify with the project/workspace only when the file isn't already
+        # a path (and the folder isn't just a repeat of the file name).
+        if folder and not _has_dir(name) and folder != name:
+            return f"{folder}/{name}"
+        return name
     return ""
+
+
+def _clean_token(value: str) -> str:
+    """Trim whitespace and the unsaved/dirty markers editors prepend."""
+    return value.strip().strip("*").strip().lstrip("●•*—- ").strip()
+
+
+def _has_dir(value: str) -> bool:
+    return "/" in value or "\\" in value
