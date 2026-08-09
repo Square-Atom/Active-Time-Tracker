@@ -1,242 +1,78 @@
 # Active Time Tracker
 
-A lightweight app that tracks how much **active** time you spend in each
-program — and, for editors like Photoshop, Pyxel Edit, Aseprite, VS Code, etc.,
-how much time you spend on each **file**. It runs quietly in the system tray and
-lets you review your time by day, week, month, or year.
+Ever wonder where your time actually goes? Active Time Tracker quietly records how
+much **active** time you spend in each app — and, for creative and coding tools,
+in each **file** — so you can review it by day, week, month, or year.
 
-Primary platform is **Windows**; it also runs on **macOS** and **Linux** (X11).
-See [Cross-platform notes](#cross-platform-notes).
+It lives in your system tray, barely uses any resources, and keeps all your data
+on your own computer.
 
-## Download (no Python needed)
+## Download & install
 
-Go to the [**Releases**](../../releases) page and download the file for your
-operating system, then open it — that's the whole app, nothing to install. It
-starts in the system tray (clock icon), begins tracking, and adds itself to
-startup (you can turn that off in Settings).
+Grab the file for your system from the [**Releases**](../../releases) page and
+open it — there's nothing to install.
 
-| OS | Download | How to open |
-|----|----------|-------------|
+| Your system | Download | Open it |
+|---|---|---|
 | **Windows** | `ActiveTimeTracker-windows.exe` | Double-click it. |
 | **macOS** | `ActiveTimeTracker-macos.zip` | Unzip, then open `ActiveTimeTracker.app`. |
-| **Linux** (X11) | `ActiveTimeTracker-linux` | `chmod +x ActiveTimeTracker-linux`, then run it. |
+| **Linux** (X11) | `ActiveTimeTracker-linux` | Make it executable, then run it. |
 
-The apps are **unsigned**, so the OS may warn on first launch:
+The app isn't code-signed, so your system may warn you the first time:
 
 * **Windows:** SmartScreen "unknown publisher" → **More info → Run anyway**.
-* **macOS:** right-click the app → **Open** (once). For per-file tracking, grant
-  Screen Recording permission in System Settings → Privacy & Security.
-* **Linux:** needs X11 (not Wayland); install `libxss1` if it's missing
-  (Debian/Ubuntu: `sudo apt install libxss1`).
+* **macOS:** right-click the app → **Open** (just the first time).
+* **Linux:** if it won't start, install `libxss1` (`sudo apt install libxss1`).
 
-Your data stays on your machine (see [Data & settings location](#data--settings-location)).
+Once open, it shows up as a **clock icon** in your tray and starts tracking. It
+also launches automatically when you log in — you can turn that off in Settings.
 
-> No downloads on the Releases page yet? They're published automatically when a
-> version is tagged — see [Automated releases](#automated-releases-github-actions).
-> You can also [build it yourself](#building-a-standalone-app) or
-> [run from source](#running-from-source).
+## Using it
 
-## How it works
+Click the tray icon to open the dashboard.
 
-* Every second it checks which window has focus and how long since your last
-  keyboard/mouse input.
-* If you've been active within the **idle timeout (default 10s)**, that second is
-  credited to the focused app (and its open file).
-* After 10 seconds of no input, the timer pauses automatically until you're active again.
-* The open file is read from the window's title bar (per-app rules — see below).
-* Everything is stored locally in SQLite. Nothing leaves your machine.
+* **Pick a period** — Today, This Week, This Month, This Year, or a **Custom
+  Range**. Use ◀ ▶ to step to the previous/next period.
+* **See your apps** — the left list shows time per app. **Click an app** to break
+  it down by file in the chart; click it again to go back.
+* **Trend chart** at the bottom shows your activity over time — drag the divider
+  above it to make it taller or shorter.
 
-It uses **polling only** — no global keyboard/mouse hooks, no admin rights — so
-it won't trip antivirus and stays cheap on CPU.
+### Right-click an app
+* **Track files for this app** — turn per-file tracking on or off for that app.
+  (Works when the app shows the file name in its title bar.)
+* **Add to ignore list** — stop tracking it and hide it from your stats.
 
-## Running from source
+### Tray menu (right-click the clock icon)
+* **Open dashboard** · **Pause / resume tracking**
+* **Settings** — idle timeout, how often it checks, start-with-system
+* **App groups** — count several programs as one (e.g. a game and its launcher)
+* **Ignored apps** — manage what's never tracked
+* **Open data folder** · **Quit**
 
-For developers, or if you'd rather not use the packaged app.
+Closing the dashboard window just hides it back to the tray — use **Quit** to
+actually stop tracking.
 
-* Python 3.13+ (tested on 3.14)
-* Install dependencies (platform-specific extras are selected automatically):
+## How it works (in short)
 
-```bash
-python -m pip install -r requirements.txt
-```
+It checks which window you're using and whether you've typed or moved the mouse
+recently. If you've been active in the last **10 seconds**, that time counts
+toward the current app (and its open file). After 10 seconds of no input, the
+timer pauses on its own. It only notices *which* window is focused — no
+keylogging — and nothing ever leaves your computer.
 
-* **Show the dashboard:** on Windows double-click `run.bat`, or:
+## Your data
 
-```bash
-python main.py          # (use pythonw on Windows for no console window)
-```
+Everything is stored locally in a folder you can back up or delete:
 
-* **Start hidden in the tray** (what autostart uses):
+* **Windows:** `%APPDATA%\ActiveTimeTracker\`
+* **macOS:** `~/Library/Application Support/ActiveTimeTracker/`
+* **Linux:** `~/.config/ActiveTimeTracker/`
 
-```bash
-python main.py --minimized
-```
+## For developers
 
-* **Windows silent launcher:** double-click `Start Active Time Tracker.vbs`.
+Running from source, building the apps yourself, the automatic release build,
+cross-platform details, and advanced configuration all live in
+**[DEVELOPERS.md](DEVELOPERS.md)**.
 
-## Building a standalone app
-
-Produces a single file that runs with no Python installed.
-
-```bash
-python -m pip install -r requirements-build.txt
-```
-
-* **Windows:** run **`build.bat`** → `dist\ActiveTimeTracker.exe`
-* **macOS / Linux:** run **`./build.sh`** →
-  * Linux: `dist/ActiveTimeTracker` (single binary)
-  * macOS: `dist/ActiveTimeTracker.app`
-
-Share that one file/bundle — no Python required to run it. (Build on the same OS
-you're targeting — PyInstaller is not a cross-compiler.)
-
-### Automated releases (GitHub Actions)
-
-You don't have to build the apps by hand. `.github/workflows/release.yml` builds
-Windows, macOS, and Linux binaries in the cloud and attaches them to a GitHub
-Release. To cut a release:
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-The workflow runs on the tag, produces `ActiveTimeTracker-windows.exe`,
-`ActiveTimeTracker-macos.zip`, and `ActiveTimeTracker-linux`, and uploads them to
-the Release for that tag — so people just download from the **Releases** page. You
-can also trigger a test build anytime from the repo's **Actions** tab (the binaries
-appear as downloadable *artifacts*). Builds are unsigned, so first-launch OS
-warnings still apply.
-
-## Cross-platform notes
-
-The core is OS-specific (focus window, idle time, autostart, single-instance) and
-lives behind small backends in `sysinfo.py` / `autostart.py`:
-
-| | Windows | macOS | Linux (X11) |
-|---|---|---|---|
-| Focus + idle | built-in (Win32) | `pyobjc` (Quartz/AppKit) | `python-xlib` + `libXss` |
-| Autostart | Registry Run key | LaunchAgent plist | `~/.config/autostart` |
-
-* **Windows** is the primary, fully-tested platform.
-* **macOS:** `requirements.txt` installs `pyobjc`. Reading the open **file name**
-  from a window needs Screen Recording permission; without it, time still counts
-  at the app level. Note tray + window interaction is less battle-tested on macOS.
-* **Linux:** needs X11 (Wayland's security model blocks active-window queries).
-  Install the system lib if missing — Debian/Ubuntu: `sudo apt install libxss1`.
-
-### Tray menu
-Right-click the tray clock icon:
-* **Open dashboard** (also opens on double-click)
-* **Pause / resume tracking**
-* **Start with Windows** — toggles launch-at-login (on by default)
-* **Settings…** — idle timeout, sample interval
-* **App groups…** — count several exes as one app
-* **Ignored apps…** — manage the never-tracked list
-* **Open data folder**
-* **Quit**
-
-### Right-click an app (in the dashboard)
-Right-click any app in the **Applications** list for quick actions:
-* **Track files for this app** — toggle whether this app is split by file or just
-  counted at the app level. Works on any app (even browsers).
-* **Add "…" to ignore list** — stop tracking it and hide it from reports.
-
-Right-clicking a merged group applies the action to all its members.
-
-### Settings
-Open from the tray menu or the **⚙ Settings** button in the dashboard:
-* **Stop timer after idle for** — the idle timeout (default 10s).
-* **Sample the active window every** — how often focus is checked (default 1s).
-* **Start with Windows** — same as the tray toggle.
-* **Manage ignored apps…** — opens the Ignored apps window (below).
-
-Changes apply immediately, no restart needed.
-
-### Ignored apps
-Open from the tray menu, or from **Settings → Manage ignored apps…**. Add apps
-that should never be tracked (e.g. games, launchers) — pick from a dropdown of
-apps you've used or type an exe name — and remove them anytime. Ignored apps are
-hidden from the dashboard reports. (You can also right-click an app in the
-dashboard to add it here quickly.)
-
-### App groups
-Open from the tray menu or the **🔀 Groups** button in the dashboard. Create a
-group, give it a name, and add the executables that should be counted as one app
-— e.g. **Godot** = `godot.exe` + `godot_console.exe`, or a browser plus its
-helper processes.
-
-Grouping is **non-destructive**: the raw per-exe data is kept and groups are folded
-together only when shown, so it's **retroactive** (past data folds in too) and can
-be changed or removed anytime. A group's file breakdown combines files across all
-its members.
-
-Closing the dashboard window (the ✕) just hides it back to the tray; use **Quit**
-to actually stop tracking.
-
-## The dashboard
-
-* **Today / This Week / This Month** buttons, with ◀ ▶ to move between periods.
-* Left: time per **application**. Click an app to drill into its **per-file**
-  breakdown in the chart; click it again to go back to the top-apps view.
-* Right: a bar chart — top apps, or the selected app's files.
-* Bottom: a **trend** chart — daily for week/month, monthly for the year view.
-* Today's view updates live every few seconds.
-
-## Data & settings location
-
-* Windows: `%APPDATA%\ActiveTimeTracker\`
-* macOS: `~/Library/Application Support/ActiveTimeTracker/`
-* Linux: `~/.config/ActiveTimeTracker/`
-
-Contains:
-* `data.db` — your tracked time (SQLite)
-* `config.json` — settings
-* `app.log` — error log
-
-(Upgrading from the old "Work Time Tracker"? Your data folder is migrated
-automatically on first launch.)
-
-## Configuration (`config.json`)
-
-```json
-{
-  "idle_timeout_seconds": 10,
-  "poll_interval_seconds": 1.0,
-  "flush_interval_seconds": 15,
-  "autostart": true,
-  "ignore_apps": ["lockapp.exe"],
-  "file_rules": {},
-  "merges": []
-}
-```
-
-### File tracking per app
-
-File detection reads the window title. Built-in rules cover Photoshop, Pyxel Edit,
-Aseprite, Krita, Clip Studio, Blender, After Effects, Illustrator, VS Code,
-Visual Studio, Sublime, Notepad(++), Obsidian, Word/Excel/PowerPoint. Browsers
-and Explorer default to app-level only.
-
-**Easiest:** right-click an app in the dashboard and toggle **Track files for this
-app** (see above).
-
-Under the hood this writes `file_rules`, keyed by the **exe name** (lowercase):
-* `["app"]` — never split by file (app-level only).
-* `["auto"]` — force generic detection ("first name.ext in the title"), even for
-  apps that default to app-level.
-* omit an app — use its built-in rule, or generic if it has none.
-
-Advanced users can also hand-write a custom regex list here (first pattern with a
-named `(?P<file>…)` group wins), e.g.
-`"mytool.exe": ["(?P<file>[^\\\\/:*?\"<>|]+\\.myext)"]`.
-
-## Notes & limitations
-
-* The app labels its own windows as **"Active Time Tracker"** (not the host
-  interpreter process).
-* **Photoshop / tabbed apps:** modern versions sometimes show only the app name
-  in the main window title (the filename lives on a document tab). When the title
-  doesn't contain the filename, time is still counted at the app level.
-* Time is credited in ~1-second steps, capped per tick so sleep/wake gaps don't
-  over-count.
+Licensed under the [MIT License](LICENSE).
