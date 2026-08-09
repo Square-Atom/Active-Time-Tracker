@@ -63,6 +63,8 @@ If a new version exists, a popup links you to the Releases page — you download
 and replace the app yourself. Nothing is downloaded or installed automatically,
 and the check only reads the public release info.
 
+See [CHANGELOG.md](CHANGELOG.md) for what's new in each version.
+
 ## How it works (in short)
 
 It checks which window you're using and whether you've typed or moved the mouse

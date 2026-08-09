@@ -2,6 +2,7 @@
 
 Technical details for Active Time Tracker. For everyday use, see the
 [README](README.md). For a codebase map and conventions, see [CLAUDE.md](CLAUDE.md).
+Release history lives in [CHANGELOG.md](CHANGELOG.md).
 
 ## Running from source
 
@@ -42,12 +43,22 @@ Build on the OS you're targeting — PyInstaller is not a cross-compiler.
 
 You don't have to build by hand. [`.github/workflows/release.yml`](.github/workflows/release.yml)
 builds Windows, macOS, and Linux binaries in the cloud and attaches them to a
-GitHub Release. To cut a release:
+GitHub Release.
+
+**Release checklist:**
+
+1. Bump `APP_VERSION` in `config.py` to the new version (no `v` prefix).
+2. Add a section for it in [CHANGELOG.md](CHANGELOG.md).
+3. Commit both.
+4. Tag and push:
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag -a v1.1.0 -m "Active Time Tracker v1.1.0"
+git push origin main --follow-tags
 ```
+
+Steps 1–2 matter: the update check compares the GitHub tag against
+`APP_VERSION`, so a stale constant tells every user an update is available.
 
 The workflow runs on the tag and produces `ActiveTimeTracker-windows.exe`,
 `ActiveTimeTracker-macos.zip`, and `ActiveTimeTracker-linux`, uploading them to
