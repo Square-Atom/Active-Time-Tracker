@@ -5,22 +5,36 @@ program — and, for editors like Photoshop, Pyxel Edit, Aseprite, VS Code, etc.
 how much time you spend on each **file**. It runs quietly in the system tray and
 lets you review your time by day, week, month, or year.
 
-Primary platform is **Windows**; it also runs on **macOS** and **Linux** (X11)
-from source or a self-built app — see [Cross-platform notes](#cross-platform-notes).
+Primary platform is **Windows**; it also runs on **macOS** and **Linux** (X11).
+See [Cross-platform notes](#cross-platform-notes).
 
 ## Download (no Python needed)
 
-**Windows:** grab **`ActiveTimeTracker.exe`** from the [Releases](../../releases)
-page and double-click it — that's the whole app in one file, nothing to install.
+Go to the [**Releases**](../../releases) page and download the file for your
+operating system, then open it — that's the whole app, nothing to install. It
+starts in the system tray (clock icon), begins tracking, and adds itself to
+startup (you can turn that off in Settings).
 
-* On first launch Windows SmartScreen may warn "unknown publisher" (normal for
-  unsigned apps): click **More info → Run anyway**.
-* It starts in the system tray (clock icon) and begins tracking. It also
-  registers itself to start with Windows; turn that off in Settings anytime.
-* Your data lives in `%APPDATA%\ActiveTimeTracker\` — it stays on your machine.
+| OS | Download | How to open |
+|----|----------|-------------|
+| **Windows** | `ActiveTimeTracker-windows.exe` | Double-click it. |
+| **macOS** | `ActiveTimeTracker-macos.zip` | Unzip, then open `ActiveTimeTracker.app`. |
+| **Linux** (X11) | `ActiveTimeTracker-linux` | `chmod +x ActiveTimeTracker-linux`, then run it. |
 
-**macOS / Linux:** build it from source (see below) — a one-file app with no
-Python needed to run the result.
+The apps are **unsigned**, so the OS may warn on first launch:
+
+* **Windows:** SmartScreen "unknown publisher" → **More info → Run anyway**.
+* **macOS:** right-click the app → **Open** (once). For per-file tracking, grant
+  Screen Recording permission in System Settings → Privacy & Security.
+* **Linux:** needs X11 (not Wayland); install `libxss1` if it's missing
+  (Debian/Ubuntu: `sudo apt install libxss1`).
+
+Your data stays on your machine (see [Data & settings location](#data--settings-location)).
+
+> No downloads on the Releases page yet? They're published automatically when a
+> version is tagged — see [Automated releases](#automated-releases-github-actions).
+> You can also [build it yourself](#building-a-standalone-app) or
+> [run from source](#running-from-source).
 
 ## How it works
 
@@ -73,9 +87,26 @@ python -m pip install -r requirements-build.txt
   * Linux: `dist/ActiveTimeTracker` (single binary)
   * macOS: `dist/ActiveTimeTracker.app`
 
-Share that one file/bundle — no Python required to run it. Upload it to your
-GitHub repo's **Releases** so others can download it. (Build on the same OS you're
-targeting — PyInstaller is not a cross-compiler.)
+Share that one file/bundle — no Python required to run it. (Build on the same OS
+you're targeting — PyInstaller is not a cross-compiler.)
+
+### Automated releases (GitHub Actions)
+
+You don't have to build the apps by hand. `.github/workflows/release.yml` builds
+Windows, macOS, and Linux binaries in the cloud and attaches them to a GitHub
+Release. To cut a release:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+The workflow runs on the tag, produces `ActiveTimeTracker-windows.exe`,
+`ActiveTimeTracker-macos.zip`, and `ActiveTimeTracker-linux`, and uploads them to
+the Release for that tag — so people just download from the **Releases** page. You
+can also trigger a test build anytime from the repo's **Actions** tab (the binaries
+appear as downloadable *artifacts*). Builds are unsigned, so first-launch OS
+warnings still apply.
 
 ## Cross-platform notes
 
