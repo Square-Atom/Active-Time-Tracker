@@ -13,6 +13,8 @@ from tkinter import messagebox, ttk
 import autostart
 import config
 import dashboard as theme  # reuse the dashboard's colour constants
+import updatedialog
+import updater
 
 
 class SettingsWindow:
@@ -120,6 +122,26 @@ class SettingsWindow:
         ttk.Button(row, text="Manage ignored apps…", style="SSmall.TButton",
                    command=self._open_ignore).pack(side="left")
 
+        ttk.Separator(frm).pack(fill="x", pady=12, **pad)
+        ttk.Label(frm, text="UPDATES", style="SSection.TLabel").pack(anchor="w", **pad)
+
+        self.check_updates_var = tk.BooleanVar(value=self.cfg.check_updates_on_startup)
+        row = ttk.Frame(frm, style="S.TFrame")
+        row.pack(fill="x", pady=(4, 0), **pad)
+        ttk.Checkbutton(row, text="Automatically check for updates on startup",
+                        variable=self.check_updates_var, style="S.TCheckbutton",
+                        takefocus=False).pack(anchor="w")
+        ttk.Label(frm, text=f"You're running version {config.APP_VERSION}. "
+                            "Updates are downloaded manually from GitHub.",
+                  style="SHint.TLabel").pack(anchor="w", **pad)
+        row = ttk.Frame(frm, style="S.TFrame")
+        row.pack(fill="x", pady=(6, 0), **pad)
+        self.update_btn = ttk.Button(row, text="Check for updates now",
+                                     style="SSmall.TButton", command=self._check_updates)
+        self.update_btn.pack(side="left")
+        self.update_status = ttk.Label(row, text="", style="SHint.TLabel")
+        self.update_status.pack(side="left", padx=(10, 0))
+
         # Buttons
         btns = ttk.Frame(frm, style="S.TFrame")
         btns.pack(fill="x", pady=(18, 0), **pad)
@@ -131,6 +153,23 @@ class SettingsWindow:
     def _open_ignore(self) -> None:
         if self.open_ignore_cb:
             self.open_ignore_cb()
+
+    def _check_updates(self) -> None:
+        self.update_btn.configure(state="disabled")
+        self.update_status.configure(text="Checking…")
+
+        def done(result):
+            # Called on the worker thread — hop back to the UI thread.
+            self.win.after(0, lambda: self._show_update_result(result))
+
+        updater.check_async(done)
+
+    def _show_update_result(self, result) -> None:
+        if not self.win.winfo_exists():
+            return
+        self.update_btn.configure(state="normal")
+        self.update_status.configure(text="")
+        updatedialog.show_result(self.win, result)
 
     def _num_row(self, parent, label, var, unit, hint, *, from_, to, increment) -> None:
         pad = {"padx": 20}
@@ -171,6 +210,7 @@ class SettingsWindow:
 
         self.cfg.idle_timeout_seconds = idle
         self.cfg.poll_interval_seconds = poll
+        self.cfg.check_updates_on_startup = bool(self.check_updates_var.get())
 
         autostart_changed = self.autostart_var.get() != self.cfg.autostart
         if autostart_changed:

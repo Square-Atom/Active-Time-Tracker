@@ -45,13 +45,23 @@ Click the tray icon to open the dashboard.
 
 ### Tray menu (right-click the clock icon)
 * **Open dashboard** · **Pause / resume tracking**
-* **Settings** — idle timeout, how often it checks, start-with-system
+* **Settings** — idle timeout, how often it checks, start-with-system, updates
 * **App groups** — count several programs as one (e.g. a game and its launcher)
 * **Ignored apps** — manage what's never tracked
 * **Open data folder** · **Quit**
 
 Closing the dashboard window just hides it back to the tray — use **Quit** to
 actually stop tracking.
+
+## Staying up to date
+
+The app can check GitHub for a newer release. In **Settings** you'll find
+**Automatically check for updates on startup** (on by default) and a
+**Check for updates now** button.
+
+If a new version exists, a popup links you to the Releases page — you download
+and replace the app yourself. Nothing is downloaded or installed automatically,
+and the check only reads the public release info.
 
 ## How it works (in short)
 

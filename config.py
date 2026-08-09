@@ -13,6 +13,7 @@ import sys
 from dataclasses import dataclass, field
 
 APP_NAME = "ActiveTimeTracker"
+APP_VERSION = "1.0.0"  # keep in sync with the git tag used for releases
 _OLD_APP_NAME = "WorkTimeTracker"  # for one-time migration of existing data
 
 
@@ -168,6 +169,7 @@ DEFAULTS = {
     # Groups of exes counted as one app in reports (non-destructive, applied at
     # read time), e.g. [{"name": "Godot", "members": ["godot.exe", "godot_console.exe"]}]
     "merges": [],
+    "check_updates_on_startup": True,
 }
 
 MERGE_PREFIX = "merge::"  # synthetic app key for a merged group
@@ -182,6 +184,7 @@ class Config:
     ignore_apps: list[str] = field(default_factory=list)
     file_rules: dict[str, list[str]] = field(default_factory=dict)
     merges: list[dict] = field(default_factory=list)
+    check_updates_on_startup: bool = True
 
     def save(self) -> None:
         data = {
@@ -192,6 +195,7 @@ class Config:
             "ignore_apps": self.ignore_apps,
             "file_rules": self.file_rules,
             "merges": self.merges,
+            "check_updates_on_startup": self.check_updates_on_startup,
         }
         tmp = CONFIG_PATH + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
@@ -260,6 +264,7 @@ def load() -> Config:
         ignore_apps=[a.lower() for a in data.get("ignore_apps", [])],
         file_rules=data.get("file_rules", {}),
         merges=data.get("merges", []),
+        check_updates_on_startup=data.get("check_updates_on_startup", True),
     )
     return cfg
 

@@ -40,6 +40,8 @@ Credit per tick is capped so sleep/wake gaps can't dump a huge chunk onto one ap
 | `ignoreapps.py` | Ignored-apps manager window |
 | `merges.py` | "App groups" window (merge several exes into one) |
 | `appicon.py` | Clock icon shared by tray, window, and the built .exe |
+| `updater.py` | GitHub release check (stdlib urllib, off-thread, never raises) |
+| `updatedialog.py` | "Update available" / check-result popups; links to Releases |
 
 `dashboard.py` holds the color constants (`BG`, `PANEL`, `FG`, `MUTED`, `ACCENT`);
 `settings.py`, `merges.py`, and `ignoreapps.py` import them as `theme`.
@@ -74,6 +76,8 @@ rules in `DEFAULT_FILE_RULES` (+ user overrides in `config.json` `file_rules`):
 - Anything OS-specific must go through `sysinfo.py` / `autostart.py`, with lazy
   imports so the module stays importable on every platform and degrades safely
   (returns "no window" / zero idle) when an optional dep is missing.
+- `config.APP_VERSION` must match the release git tag — the update check
+  compares the two.
 
 ## Running & building
 

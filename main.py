@@ -22,6 +22,8 @@ from PIL import ImageTk
 import autostart
 import config
 import sysinfo
+import updatedialog
+import updater
 from appicon import make_clock_image
 from dashboard import Dashboard
 from ignoreapps import IgnoreWindow
@@ -174,6 +176,15 @@ def main() -> None:
         dashboard.show()
     else:
         root.withdraw()
+
+    # Optional startup update check: runs in the background and only speaks up
+    # when there's actually a newer release.
+    if cfg.check_updates_on_startup:
+        def on_startup_check(result):
+            if result.has_update:
+                root.after(0, lambda: updatedialog.show_update(root, result))
+
+        root.after(3000, lambda: updater.check_async(on_startup_check))
 
     try:
         root.mainloop()

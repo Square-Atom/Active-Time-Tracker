@@ -193,6 +193,8 @@ class Dashboard:
         style.configure("Panel.TFrame", background=PANEL)
         style.configure("TLabel", background=BG, foreground=FG)
         style.configure("Muted.TLabel", background=BG, foreground=MUTED)
+        style.configure("Note.TLabel", background=BG, foreground=MUTED,
+                        font=("Segoe UI", 8))
         style.configure("Panel.TLabel", background=PANEL, foreground=FG)
         style.configure("PanelMuted.TLabel", background=PANEL, foreground=MUTED)
         style.configure("Total.TLabel", background=BG, foreground=ACCENT,
@@ -282,13 +284,20 @@ class Dashboard:
         # Right column
         right = ttk.Frame(body)
         right.grid(row=0, column=1, sticky="nsew")
-        right.rowconfigure(1, weight=1)
+        right.rowconfigure(2, weight=1)
         right.columnconfigure(0, weight=1)
 
         self.chart_title = ttk.Label(right, text="TOP APPLICATIONS", style="Muted.TLabel")
         self.chart_title.grid(row=0, column=0, sticky="w", pady=(0, 4))
+        # Shown only in the per-file view: files are identified from the window
+        # title, so same-named files can share a row.
+        self.chart_note = ttk.Label(
+            right,
+            text="ⓘ Files are matched by name — same-named files may share a row "
+                 "unless the app shows their folder.",
+            style="Note.TLabel", wraplength=420, justify="left")
         self.chart = tk.Canvas(right, bg=PANEL, highlightthickness=0, height=200)
-        self.chart.grid(row=1, column=0, sticky="nsew")
+        self.chart.grid(row=2, column=0, sticky="nsew")
         self.chart.bind("<Configure>", lambda e: self._draw_chart())
 
         # --- trend (multi-day only; added to the paned window in refresh) ---
@@ -560,7 +569,8 @@ class Dashboard:
         self._data_files = self.storage.totals_by_file(start, end, members)
 
     def _update_chart_for_selection(self) -> None:
-        if self.selected_app and self._data_files:
+        showing_files = bool(self.selected_app and self._data_files)
+        if showing_files:
             app_name = next((a["app_name"] for a in self._data_apps
                              if a["app"] == self.selected_app), self.selected_app)
             self.chart_title.configure(text=f"TIME BY FILE · {app_name.upper()}")
@@ -568,6 +578,11 @@ class Dashboard:
         else:
             self.chart_title.configure(text="TOP APPLICATIONS")
             items = [(a["app_name"], a["seconds"]) for a in self._data_apps]
+        # The name-matching caveat only applies to the per-file view.
+        if showing_files:
+            self.chart_note.grid(row=1, column=0, sticky="w", pady=(0, 4))
+        else:
+            self.chart_note.grid_remove()
         self._chart_items = items[:10]
         self._draw_chart()
 

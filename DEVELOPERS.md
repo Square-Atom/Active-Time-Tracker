@@ -107,7 +107,8 @@ automatically on first launch.
   "autostart": true,
   "ignore_apps": ["lockapp.exe"],
   "file_rules": {},
-  "merges": []
+  "merges": [],
+  "check_updates_on_startup": true
 }
 ```
 
@@ -151,6 +152,23 @@ Advanced users can hand-write a custom regex list (first pattern with a named
 
 A list of `{ "name": ..., "members": ["a.exe", "b.exe"] }`. Members are counted
 as one app in reports. Applied at read time (non-destructive).
+
+## Update checking
+
+`updater.py` asks the GitHub API for the latest release of
+`Square-Atom/Active-Time-Tracker` and compares its tag with
+`config.APP_VERSION`. It uses only stdlib `urllib`, runs off the UI thread
+(`check_async`), and never raises — failures come back as an `error` result.
+`updatedialog.py` renders the popup, which just links to the Releases page; the
+app never downloads or installs anything.
+
+Triggered from Settings (button + "check on startup" toggle, stored as
+`check_updates_on_startup`). The startup check runs 3s after launch and stays
+silent unless a newer version exists.
+
+**When releasing, bump `config.APP_VERSION` to match the git tag** — the
+comparison is tag-vs-constant, so a stale constant makes the app think an update
+is always available.
 
 ## Notes & limitations
 
