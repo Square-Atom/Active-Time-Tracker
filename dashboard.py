@@ -126,6 +126,7 @@ class Dashboard:
         self.selected_app: str | None = None
         self._refresh_job = None
         self._visible = False
+        self._trend_height = 190  # default trend pane height (drag-adjustable)
         self._build()
 
     def _open_settings(self) -> None:
@@ -205,12 +206,20 @@ class Dashboard:
         self.status_label = ttk.Label(totalrow, text="", style="Muted.TLabel")
         self.status_label.pack(side="right", pady=(10, 0))
 
-        # --- body: apps | (chart + files) -------------------------------
-        body = ttk.Frame(self.root)
-        body.pack(fill="both", expand=True, padx=16, pady=(0, 8))
+        # --- body + trend live in a vertical paned window so the trend
+        #     height is drag-adjustable via the divider ---------------------
+        style.configure("TPanedwindow", background=BG)
+        style.configure("Sash", sashthickness=7, gripcount=12)
+        self.main_paned = ttk.PanedWindow(self.root, orient="vertical")
+        self.main_paned.pack(fill="both", expand=True, padx=16, pady=(0, 12))
+        self.main_paned.bind("<ButtonRelease-1>", lambda e: self._remember_trend_height())
+
+        # body: apps | (chart)
+        body = ttk.Frame(self.main_paned)
         body.columnconfigure(0, weight=3, uniform="col")
         body.columnconfigure(1, weight=4, uniform="col")
         body.rowconfigure(0, weight=1)
+        self.main_paned.add(body, weight=4)
 
         # Apps
         left = ttk.Frame(body)
@@ -241,13 +250,14 @@ class Dashboard:
         self.chart.grid(row=1, column=0, sticky="nsew")
         self.chart.bind("<Configure>", lambda e: self._draw_chart())
 
-        # --- trend (multi-day only) -------------------------------------
-        self.trend_frame = ttk.Frame(self.root)
-        self.trend_frame.pack(fill="x", padx=16, pady=(0, 14))
+        # --- trend (multi-day only; added to the paned window in refresh) ---
+        self.trend_frame = ttk.Frame(self.main_paned)
         self.trend_title = ttk.Label(self.trend_frame, text="DAILY TREND", style="Muted.TLabel")
         self.trend_title.pack(anchor="w", pady=(0, 4))
-        self.trend = tk.Canvas(self.trend_frame, bg=PANEL, highlightthickness=0, height=120)
-        self.trend.pack(fill="x")
+        # A small requested height lets the sash shrink it; the default size is
+        # set via the sash position in _apply_trend_height().
+        self.trend = tk.Canvas(self.trend_frame, bg=PANEL, highlightthickness=0, height=60)
+        self.trend.pack(fill="both", expand=True)
         self.trend.bind("<Configure>", lambda e: self._draw_trend())
 
         self._data_apps: list[dict] = []
@@ -376,15 +386,19 @@ class Dashboard:
         self._load_files()
         self._update_chart_for_selection()
 
-        # trend visibility
+        # trend visibility (as a resizable bottom pane)
+        panes = self.main_paned.panes()
         if self.range.is_multiday:
             self.trend_title.configure(
                 text="MONTHLY TREND" if self.range.mode == "year" else "DAILY TREND")
-            if not self.trend_frame.winfo_ismapped():
-                self.trend_frame.pack(fill="x", padx=16, pady=(0, 14))
+            if str(self.trend_frame) not in panes:
+                self.main_paned.add(self.trend_frame, weight=1)
+                self.root.after(10, self._apply_trend_height)
             self._draw_trend()
         else:
-            self.trend_frame.pack_forget()
+            if str(self.trend_frame) in panes:
+                self._remember_trend_height()
+                self.main_paned.forget(self.trend_frame)
 
         self._update_status()
 
@@ -477,7 +491,7 @@ class Dashboard:
         maxv = max((v for _, v, _ in bars), default=0) or 1
         pad_x = 10
         pad_bottom = 22
-        pad_top = 10
+        pad_top = 20  # room for the value label above the tallest bar
         n = len(bars)
         slot = (w - 2 * pad_x) / n
         bar_w = min(slot * 0.6, 46)
@@ -490,12 +504,34 @@ class Dashboard:
             color = ACCENT if is_cur else "#4a4c66"
             if v:
                 c.create_rectangle(x0, base_y - bh, x1, base_y, fill=color, outline="")
-                if bh > 14:
-                    c.create_text(cx, base_y - bh - 8, text=fmt_duration(v),
-                                  fill=MUTED, font=("Segoe UI", 7))
+                if bh > 12:
+                    ty = max(9, base_y - bh - 8)  # keep the label inside the canvas
+                    c.create_text(cx, ty, text=fmt_duration(v),
+                                  fill=MUTED, font=("Segoe UI", 8))
             if lbl:
                 c.create_text(cx, base_y + 11, text=lbl,
                               fill=(ACCENT if is_cur else MUTED), font=("Segoe UI", 8))
+
+    def _apply_trend_height(self) -> None:
+        """Position the sash so the trend pane gets its remembered height."""
+        try:
+            total = self.main_paned.winfo_height()
+            if total <= 1:
+                self.root.after(30, self._apply_trend_height)
+                return
+            pos = max(140, total - self._trend_height)
+            self.main_paned.sashpos(0, pos)
+        except tk.TclError:
+            pass
+
+    def _remember_trend_height(self) -> None:
+        """Remember the current trend pane height so it survives view switches."""
+        try:
+            h = self.trend_frame.winfo_height()
+            if h > 40:
+                self._trend_height = h
+        except tk.TclError:
+            pass
 
     # -- status + lifecycle ----------------------------------------------
 
