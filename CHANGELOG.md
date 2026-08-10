@@ -3,7 +3,7 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
-## [Unreleased]
+## [1.2.0] — 2026-08-10
 
 ### Added
 - **Website tracking for browsers.** Chrome, Edge, Firefox, Brave, Opera and
@@ -14,18 +14,17 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
   so a name can differ from the actual domain, and unusual title formats may
   show an odd label. Turn it off per browser with right-click → *Track files for
   this app*.
+- **Automatic backups.** Your database is copied once a day to
+  `backups/data-YYYY-MM-DD.db` (newest 7 kept), alongside your settings. In
+  **Settings → Backup** you can turn it off, pick the folder, or back up now —
+  choose a synced folder (OneDrive, Nextcloud…) to keep copies off this machine,
+  where they'd survive a failed drive. New tray item: **Open backups folder**.
 
 ### Changed
 - **Chart names are shown in full** and wrap onto extra lines instead of being
   cut short. Names now get half the chart width and the bars are about half
   their previous length. When rows don't all fit, a "+N more" marker says how
   many are hidden.
-
-- **Automatic backups.** Your database is copied once a day to
-  `backups/data-YYYY-MM-DD.db` (newest 7 kept), alongside your settings. In
-  **Settings → Backup** you can turn it off, pick the folder, or back up now —
-  choose a synced folder (OneDrive, Nextcloud…) to keep copies off this machine.
-  New tray item: **Open backups folder**.
 
 ### Fixed
 - The taskbar button showed Python's icon when running from source. The app now
@@ -34,9 +33,9 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
 
 ### Internal
 - Added a **pytest suite** (116 tests) covering title parsing, storage and
-  aggregation, the tracker loop, backups, the update check, and the windows.
-  CI now runs it on Windows, macOS and Linux for every push, and release builds
-  are blocked unless it passes.
+  aggregation, the tracker loop, backups, the update check, and the editor
+  windows. CI runs it on Windows, macOS and Linux for every push and pull
+  request, and release builds are blocked unless it passes.
 
 ## [1.1.0] — 2026-08-09
 
@@ -95,5 +94,6 @@ First release.
   Windows/macOS/Linux release builds through GitHub Actions.
 - Local SQLite storage — data never leaves the machine.
 
+[1.2.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.0.0
