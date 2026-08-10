@@ -48,6 +48,33 @@ def test_same_name_files_stay_distinct():
     assert a != b == "ProjectB/design.py"
 
 
+@pytest.mark.parametrize("exe,title,expected", [
+    # Hyphens are the tricky case: a bare "-" used to be treated as a separator,
+    # so "clockwork-workshop.pyxel" was truncated to "workshop.pyxel".
+    ("pyxeledit.exe", "Pyxel Edit - clockwork-workshop.pyxel",
+     "clockwork-workshop.pyxel"),
+    ("pyxeledit.exe", "Pyxel Edit - clockwork_workshop.pyxel",
+     "clockwork_workshop.pyxel"),
+    ("pyxeledit.exe", "Pyxel Edit - clockwork workshop.pyxel",
+     "clockwork workshop.pyxel"),
+    ("pyxeledit.exe", "Pyxel Edit - my-tile-set_v2 final.pyxel",
+     "my-tile-set_v2 final.pyxel"),
+    ("aseprite.exe", "Aseprite v1.3 - goblin-king.aseprite", "goblin-king.aseprite"),
+    ("photoshop.exe", "poster-final-v2.psd @ 66.7% (Layer 1, RGB/8) *",
+     "poster-final-v2.psd"),
+    ("blender.exe", "Blender - space-ship_01.blend", "space-ship_01.blend"),
+    ("unknownapp.exe", "MyTool - some-render_01.exr", "some-render_01.exr"),
+])
+def test_punctuation_in_filenames_survives(exe, title, expected):
+    assert parse(exe, title) == expected
+
+
+def test_app_name_prefix_is_still_stripped():
+    """The separator fix must not stop us trimming the app name."""
+    assert parse("pyxeledit.exe", "Pyxel Edit - hero.pyxel") == "hero.pyxel"
+    assert parse("krita.exe", "Krita - [C:/art/my-piece.kra]") == "C:/art/my-piece.kra"
+
+
 # --- websites --------------------------------------------------------------
 
 @pytest.mark.parametrize("title,expected", [

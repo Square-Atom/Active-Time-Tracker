@@ -78,18 +78,27 @@ FRIENDLY_NAMES = {
     "powerpnt.exe": "PowerPoint",
 }
 
+# Separators between an app name and the filename in a window title.
+#   HARD — characters a filename can never contain, so they always split.
+#   SOFT — dashes, pipes and arrows, which *do* appear in filenames
+#          (clockwork-workshop.pyxel). These only split when surrounded by
+#          whitespace, so " - " separates but "clockwork-workshop" survives.
+_HARD_SEP = r"[\\/\[]"
+_SOFT_SEP = "\\s[-\u2013\u2014|>\u2192]\\s"
+_TITLE_PREFIX = rf"(?:.*(?:{_HARD_SEP}|{_SOFT_SEP})|^)\s*"
+
+
 def ext_rule(*exts: str) -> str:
     """Build a regex that grabs the filename token ending in one of `exts`.
 
-    It takes the token *after the last separator* (dash, slash, backslash, '[',
-    pipe, arrow), so an app name or path in the title is stripped away, while a
-    filename that itself contains spaces is kept intact. Works whether the file
-    appears at the start of the title (e.g. Photoshop) or the end (e.g. "App -
-    file.ext" / "App [C:\\path\\file.ext]").
+    It takes the token *after the last separator*, so an app name or path in the
+    title is stripped away while the filename itself stays intact — including
+    hyphens, underscores and spaces. Works whether the file appears at the start
+    of the title (e.g. Photoshop) or the end ("App - file.ext",
+    "App [C:\\path\\file.ext]").
     """
     group = "|".join(exts)
-    sep = r"-\u2013\\/\[|>\u2192"
-    return rf'(?:.*[{sep}]|^)\s*(?P<file>[^\\/:*?"<>|\[\]]+?\.(?:{group}))'
+    return rf'{_TITLE_PREFIX}(?P<file>[^\\/:*?"<>|\[\]]+?\.(?:{group}))'
 
 
 def path_ext_rule(*exts: str) -> str:
@@ -107,7 +116,8 @@ def path_ext_rule(*exts: str) -> str:
 # Generic fallbacks, tried in order: a rooted path first, then a bare filename.
 GENERIC_PATH_RE = re.compile(
     r'(?P<file>(?:[A-Za-z]:[\\/]|\\\\|/|~[\\/])[^:*?"<>|\r\n\[\]]*?\.[A-Za-z0-9]{1,6})')
-GENERIC_FILE_RE = re.compile(r'(?P<file>[^\\/:*?"<>|\r\n]+\.[A-Za-z0-9]{1,6})')
+GENERIC_FILE_RE = re.compile(
+    rf'{_TITLE_PREFIX}(?P<file>[^\\/:*?"<>|\r\n]+?\.[A-Za-z0-9]{{1,6}})')
 
 
 # --- browser "which site am I on" detection ---------------------------------
