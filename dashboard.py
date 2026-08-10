@@ -27,7 +27,7 @@ BAR_COLORS = [
     "#7c9cff", "#7ce0c3", "#ffcb6b", "#ff8b94", "#c792ea",
     "#82d8ff", "#f78c6c", "#a6e22e", "#ff9de2", "#8fd6a9",
 ]
-ROW_HOVER = "#31324a"
+ROW_HOVER = "#383a58"   # readable against PANEL without shouting
 MARKER_W = 16    # expander column, so names line up whether or not one is shown
 FILE_INDENT = 18
 
@@ -531,15 +531,21 @@ class Dashboard:
         return "break"
 
     def _on_chart_motion(self, event) -> None:
+        # Highlight whatever is under the pointer — a wide gap between a long
+        # name and its time is hard to track by eye otherwise. Only expandable
+        # rows get the hand cursor, since only those do something when clicked.
         row = self._row_at(event)
-        key = row["key"] if row and row["kind"] == "app" and row["has_files"] else None
-        self._set_hover(key)
+        self._set_hover(row["key"] if row else None,
+                        clickable=bool(row and row["kind"] == "app"
+                                       and row["has_files"]))
 
-    def _set_hover(self, key) -> None:
+    def _set_hover(self, key, clickable: bool = False) -> None:
         if key != self._hover:
             self._hover = key
-            self.chart.configure(cursor="hand2" if key else "")
             self._draw_chart()
+        cursor = "hand2" if clickable else ""
+        if self.chart.cget("cursor") != cursor:
+            self.chart.configure(cursor=cursor)
 
     def _scroll_chart(self, direction: int) -> None:
         self.chart.yview_scroll(direction * 2, "units")
@@ -846,9 +852,9 @@ class Dashboard:
             x0, y0, x1, y1 = c.bbox(text_id)
             row_h = max(min_row, (y1 - y0) + vpad)
 
-            if self._hover == row.get("key") and not is_file:
+            if self._hover == row.get("key"):
                 c.create_rectangle(2, y, w - 2, y + row_h, fill=ROW_HOVER, outline="")
-                c.tag_raise(text_id)
+                c.tag_raise(text_id)   # the band is drawn after the name
             c.move(text_id, 0, (row_h - (y1 - y0)) / 2)   # centre in the row
 
             mid = y + row_h / 2

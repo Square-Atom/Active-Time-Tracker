@@ -471,6 +471,66 @@ def test_right_click_actions_update_config(dash, tk_root, store, cfg, today):
     assert "game.exe" not in [r["key"] for r in dash._rows]
 
 
+def _hover(dash, key):
+    row = next(r for r in dash._rows if r.get("key") == key)
+    dash._on_chart_motion(types.SimpleNamespace(y=row["y0"] + 2))
+
+
+def _bands(canvas, w):
+    """Full-width highlight rectangles (bars are narrower than the canvas)."""
+    return [canvas.coords(i) for i in canvas.find_all()
+            if canvas.type(i) == "rectangle" and canvas.coords(i)[2] >= w - 4]
+
+
+def test_hovering_highlights_the_row_under_the_pointer(dash, tk_root, store, today):
+    """A long gap between a name and its time is hard to track by eye."""
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 200)
+    store.add_seconds(today, "game.exe", "Game", "", 100)
+    dash.refresh(); _drawn(dash, tk_root)
+    assert _bands(dash.chart, 560) == [], "nothing highlighted before hovering"
+
+    _hover(dash, "code.exe"); _drawn(dash, tk_root)
+    assert len(_bands(dash.chart, 560)) == 1
+
+
+def test_hovering_a_file_row_highlights_it_too(dash, tk_root, store, today):
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 200)
+    dash.refresh(); _drawn(dash, tk_root)
+    _click(dash, "code.exe"); _drawn(dash, tk_root)
+
+    file_row = next(r for r in dash._rows if r["kind"] == "file")
+    _hover(dash, file_row["key"]); _drawn(dash, tk_root)
+    assert dash._hover == file_row["key"]
+    bands = _bands(dash.chart, 560)
+    assert len(bands) == 1
+    # the band covers the file's row, not the app's
+    assert bands[0][1] == pytest.approx(file_row["y0"], abs=1)
+
+
+def test_only_expandable_rows_get_the_hand_cursor(dash, tk_root, store, cfg, today):
+    cfg.set_track_files("game.exe", False)
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 200)
+    store.add_seconds(today, "game.exe", "Game", "", 100)
+    dash.refresh(); _drawn(dash, tk_root)
+
+    _hover(dash, "code.exe")
+    assert str(dash.chart.cget("cursor")) == "hand2"
+    _hover(dash, "game.exe")                       # app-level: nothing to open
+    assert str(dash.chart.cget("cursor")) == ""
+
+
+def test_leaving_the_chart_clears_the_highlight(dash, tk_root, store, today):
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 200)
+    dash.refresh(); _drawn(dash, tk_root)
+    _hover(dash, "code.exe"); _drawn(dash, tk_root)
+    assert dash._hover is not None
+
+    dash._set_hover(None)
+    _drawn(dash, tk_root)
+    assert dash._hover is None
+    assert _bands(dash.chart, 560) == []
+
+
 def test_right_clicking_a_file_targets_its_app(dash, tk_root, store, today):
     store.add_seconds(today, "code.exe", "VS Code", "main.py", 60)
     dash.refresh(); _drawn(dash, tk_root)

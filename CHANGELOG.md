@@ -3,6 +3,14 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## [Unreleased]
+
+### Changed
+- **Hovering any row highlights it**, including files and websites. The gap
+  between a short bar and the time on the right made it easy to lose track of
+  which row you were reading. The hand cursor still appears only on rows that
+  actually expand.
+
 ## [1.3.0] — 2026-08-10
 
 ### Added
