@@ -265,6 +265,11 @@ DEFAULTS = {
     # read time), e.g. [{"name": "Godot", "members": ["godot.exe", "godot_console.exe"]}]
     "merges": [],
     "check_updates_on_startup": True,
+    # Daily rotating backups of data.db (+ config.json).
+    "backup_enabled": True,
+    "backup_dir": "",      # "" = <data dir>/backups; set a synced folder for
+                           # off-machine safety (OneDrive, Nextcloud, …)
+    "backup_keep": 7,
 }
 
 MERGE_PREFIX = "merge::"  # synthetic app key for a merged group
@@ -280,6 +285,9 @@ class Config:
     file_rules: dict[str, list[str]] = field(default_factory=dict)
     merges: list[dict] = field(default_factory=list)
     check_updates_on_startup: bool = True
+    backup_enabled: bool = True
+    backup_dir: str = ""
+    backup_keep: int = 7
 
     def save(self) -> None:
         data = {
@@ -291,6 +299,9 @@ class Config:
             "file_rules": self.file_rules,
             "merges": self.merges,
             "check_updates_on_startup": self.check_updates_on_startup,
+            "backup_enabled": self.backup_enabled,
+            "backup_dir": self.backup_dir,
+            "backup_keep": self.backup_keep,
         }
         tmp = CONFIG_PATH + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
@@ -360,6 +371,9 @@ def load() -> Config:
         file_rules=data.get("file_rules", {}),
         merges=data.get("merges", []),
         check_updates_on_startup=data.get("check_updates_on_startup", True),
+        backup_enabled=data.get("backup_enabled", True),
+        backup_dir=data.get("backup_dir", ""),
+        backup_keep=int(data.get("backup_keep", 7) or 7),
     )
     return cfg
 

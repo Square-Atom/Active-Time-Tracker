@@ -21,10 +21,22 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
   their previous length. When rows don't all fit, a "+N more" marker says how
   many are hidden.
 
+- **Automatic backups.** Your database is copied once a day to
+  `backups/data-YYYY-MM-DD.db` (newest 7 kept), alongside your settings. In
+  **Settings → Backup** you can turn it off, pick the folder, or back up now —
+  choose a synced folder (OneDrive, Nextcloud…) to keep copies off this machine.
+  New tray item: **Open backups folder**.
+
 ### Fixed
 - The taskbar button showed Python's icon when running from source. The app now
   claims its own Windows AppUserModelID and sets a real `.ico`, so the clock
   icon appears in the title bar and taskbar.
+
+### Internal
+- Added a **pytest suite** (116 tests) covering title parsing, storage and
+  aggregation, the tracker loop, backups, the update check, and the windows.
+  CI now runs it on Windows, macOS and Linux for every push, and release builds
+  are blocked unless it passes.
 
 ## [1.1.0] — 2026-08-09
 

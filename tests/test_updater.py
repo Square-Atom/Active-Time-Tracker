@@ -1,0 +1,133 @@
+"""Update checking — version comparison and GitHub responses.
+
+All network access is mocked: CI must not depend on GitHub being reachable, and
+a rate-limited runner shouldn't turn into a red build.
+"""
+
+import json
+import urllib.error
+import urllib.request
+
+import config
+import pytest
+import updater
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("v1.2.3", (1, 2, 3)),
+    ("1.0", (1, 0)),
+    ("v2.0.0-beta", (2, 0, 0)),
+    ("nonsense", (0,)),
+])
+def test_parse_version(text, expected):
+    assert updater.parse_version(text) == expected
+
+
+@pytest.mark.parametrize("latest,current,newer", [
+    ("1.1.0", "1.0.0", True),
+    ("1.0.1", "1.0.0", True),
+    ("2.0", "1.9.9", True),
+    ("v1.2.0", "1.1.0", True),
+    ("1.0.0", "1.0.0", False),
+    ("1.0", "1.0.0", False),      # differing precision, same version
+    ("0.9", "1.0.0", False),
+])
+def test_is_newer(latest, current, newer):
+    assert updater.is_newer(latest, current) is newer
+
+
+@pytest.fixture
+def github(monkeypatch):
+    """Fake the GitHub API: yields a setter for the payload or exception."""
+    state = {}
+
+    class Resp:
+        def read(self):
+            return json.dumps(state["payload"]).encode()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    def fake_urlopen(req, timeout=None):
+        if state.get("exc"):
+            raise state["exc"]
+        return Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    def configure(payload=None, exc=None):
+        state["payload"], state["exc"] = payload, exc
+
+    return configure
+
+
+def test_newer_release_is_reported(github):
+    github({"tag_name": "v2.5.0", "html_url": "https://example/releases/v2.5.0"})
+    result = updater.check("1.0.0")
+    assert result.status == "update"
+    assert result.latest == "2.5.0"
+    assert result.has_update is True
+
+
+def test_same_version_is_current(github):
+    github({"tag_name": "v1.0.0", "html_url": "u"})
+    assert updater.check("1.0.0").status == "current"
+
+
+def test_missing_tag_means_no_releases(github):
+    github({"tag_name": "", "html_url": "u"})
+    assert updater.check("1.0.0").status == "none"
+
+
+@pytest.mark.parametrize("code,status", [(404, "none"), (403, "error"),
+                                         (429, "error"), (500, "error")])
+def test_http_errors(github, code, status):
+    github(exc=urllib.error.HTTPError("u", code, "err", {}, None))
+    result = updater.check("1.0.0")
+    assert result.status == status
+    assert result.message           # always explains itself to the user
+
+
+def test_offline_is_an_error_not_a_crash(github):
+    github(exc=urllib.error.URLError("offline"))
+    result = updater.check("1.0.0")
+    assert result.status == "error" and not result.has_update
+
+
+def test_garbled_response_is_handled(github, monkeypatch):
+    class Bad:
+        def read(self):
+            return b"not json"
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: Bad())
+    assert updater.check("1.0.0").status == "error"
+
+
+def test_app_version_matches_release_tag_format():
+    """APP_VERSION must be a bare version — the update check compares it to the
+    GitHub tag, so a stale or v-prefixed value misreports updates."""
+    assert not config.APP_VERSION.lower().startswith("v")
+    assert updater.parse_version(config.APP_VERSION) >= (1, 0)
+
+
+def test_check_async_delivers_a_result(github):
+    github({"tag_name": "v9.9.9", "html_url": "u"})
+    seen = []
+    done = __import__("threading").Event()
+
+    def cb(result):
+        seen.append(result)
+        done.set()
+
+    updater.check_async(cb, "1.0.0")
+    assert done.wait(10), "callback never fired"
+    assert seen[0].has_update is True

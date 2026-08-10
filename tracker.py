@@ -12,9 +12,12 @@ import os
 import threading
 import time
 
+import backups
 import config
 import sysinfo
 from storage import Storage
+
+_BACKUP_CHECK_SECONDS = 3600  # how often to ask "is today's backup done?"
 
 # Synthetic identity for this app's own windows (dashboard / settings), so they
 # show up as "Active Time Tracker" instead of the host interpreter process.
@@ -71,6 +74,8 @@ class Tracker:
     def _run(self) -> None:
         last = time.monotonic()
         last_flush = last
+        # Check soon after start, then hourly.
+        last_backup_check = last - _BACKUP_CHECK_SECONDS
 
         while not self._stop.is_set():
             # Read config live so Settings changes take effect without restart.
@@ -92,6 +97,11 @@ class Tracker:
             if now - last_flush >= flush_every:
                 self.storage.flush()
                 last_flush = now
+                # Cheap "is a daily backup due?" check, piggybacked on the
+                # flush so it needs no timer of its own.
+                if now - last_backup_check >= _BACKUP_CHECK_SECONDS:
+                    last_backup_check = now
+                    backups.maybe_run(self.storage, self.cfg)
 
             if self._paused.is_set():
                 self.is_active = False

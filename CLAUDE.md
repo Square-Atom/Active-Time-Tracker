@@ -40,6 +40,7 @@ Credit per tick is capped so sleep/wake gaps can't dump a huge chunk onto one ap
 | `ignoreapps.py` | Ignored-apps manager window |
 | `merges.py` | "App groups" window (merge several exes into one) |
 | `appicon.py` | Clock icon shared by tray, window, and the built .exe |
+| `backups.py` | Daily rotating backups (location, rotation, scheduling) |
 | `updater.py` | GitHub release check (stdlib urllib, off-thread, never raises) |
 | `updatedialog.py` | "Update available" / check-result popups; links to Releases |
 
@@ -99,5 +100,7 @@ Build a standalone app (no Python needed to run the result):
   be tested on real machines (macOS needs Screen Recording permission for per-file
   window titles; Linux needs X11, not Wayland).
 - `build/`, `dist/`, `app.ico`, and `*.spec` are generated and git-ignored.
-- No test framework is set up; ad-hoc verification scripts were used during
-  development (not committed).
+- Tests live in `tests/` (pytest): `python -m pytest`. `tests/conftest.py`
+  sandboxes the data dir *before* importing project modules, since `config`
+  resolves it at import time. Never hard-code today's date (use the `today`
+  fixture) and never hit the network. CI gates releases on the suite.

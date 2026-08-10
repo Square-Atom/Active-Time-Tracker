@@ -50,12 +50,8 @@ class Storage:
         with self._lock:
             self._buffer[(day, app, app_name, file)] += seconds
 
-    def flush(self) -> None:
-        with self._lock:
-            if not self._buffer:
-                return
-            items = list(self._buffer.items())
-            self._buffer.clear()
+    def _write(self, items) -> None:
+        """Persist buffered (key, seconds) pairs in one transaction."""
         with self._conn:
             for (day, app, app_name, file), seconds in items:
                 self._conn.execute(
@@ -69,9 +65,41 @@ class Storage:
                     (day, app, app_name, file, seconds),
                 )
 
+    def flush(self) -> None:
+        with self._lock:
+            if not self._buffer:
+                return
+            items = list(self._buffer.items())
+            self._buffer.clear()
+        self._write(items)
+
     def close(self) -> None:
         self.flush()
         self._conn.close()
+
+    def backup_to(self, path: str) -> None:
+        """Write a consistent copy of the database to `path`.
+
+        Uses SQLite's own backup API rather than copying files: in WAL mode most
+        recent commits live in the `-wal` sidecar, so a filesystem copy of
+        data.db would miss them (and could catch a half-written state). This
+        runs against the live connection and produces a single clean file.
+        """
+        with self._lock:
+            buffered = list(self._buffer.items())
+            self._buffer.clear()
+        if buffered:
+            self._write(buffered)
+        dest = sqlite3.connect(path)
+        try:
+            self._conn.backup(dest)
+        finally:
+            dest.close()
+        # Fold the WAL back into the main file so it doesn't grow unbounded.
+        try:
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass
 
     # -- reading ----------------------------------------------------------
 

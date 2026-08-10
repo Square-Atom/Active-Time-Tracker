@@ -22,6 +22,7 @@ from PIL import ImageTk
 
 import appicon
 import autostart
+import backups
 import config
 import sysinfo
 import updatedialog
@@ -180,6 +181,14 @@ def main() -> None:
     def do_open_folder(icon, item):
         sysinfo.open_path(config.APP_DIR)
 
+    def do_open_backups(icon, item):
+        path = backups.backup_dir(cfg)
+        try:
+            os.makedirs(path, exist_ok=True)
+            sysinfo.open_path(path)
+        except OSError:
+            logging.exception("Could not open the backups folder")
+
     def do_quit(icon, item):
         try:
             tracker.stop()
@@ -201,6 +210,7 @@ def main() -> None:
         pystray.MenuItem("App groups…", do_merges),
         pystray.MenuItem("Ignored apps…", do_ignore),
         pystray.MenuItem("Open data folder", do_open_folder),
+        pystray.MenuItem("Open backups folder", do_open_backups),
         pystray.MenuItem("Quit", do_quit),
     )
     icon = pystray.Icon(APP_ID, make_clock_image(64), APP_TITLE, menu)

@@ -84,6 +84,19 @@ Everything is stored locally in a folder you can back up or delete:
 * **macOS:** `~/Library/Application Support/ActiveTimeTracker/`
 * **Linux:** `~/.config/ActiveTimeTracker/`
 
+### Backups
+
+The app copies your data once a day into a `backups` folder there, keeping the
+last 7 days. Find it via the tray menu → **Open backups folder**.
+
+In **Settings → Backup** you can turn this off, back up on demand, or point it
+at a different folder. Worth doing: choosing a synced folder (OneDrive,
+Nextcloud, Dropbox…) means your history survives even if the drive dies — a
+backup sitting on the same disk won't.
+
+To restore: quit the app, copy a `data-YYYY-MM-DD.db` over `data.db` (delete any
+`data.db-wal` / `data.db-shm` next to it), then start the app again.
+
 ## For developers
 
 Running from source, building the apps yourself, the automatic release build,

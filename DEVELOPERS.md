@@ -24,6 +24,28 @@ python main.py --minimized  # start hidden in the tray (what autostart uses)
 Windows convenience launchers: `run.bat` (shows the dashboard) and
 `Start Active Time Tracker.vbs` (silent, no console window).
 
+## Tests
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
+`tests/conftest.py` redirects the per-user data directory to a temp sandbox
+**before** any project module is imported — `config` resolves and creates that
+directory at import time, so tests can never touch (or migrate) your real data.
+GUI tests skip themselves when no display is available.
+
+Two rules worth keeping:
+
+* **Never hard-code today's date.** Use the `today` fixture. Tests that assumed
+  a fixed date silently broke at midnight.
+* **Never hit the network.** `test_updater.py` mocks `urllib`; a rate-limited
+  runner shouldn't turn into a red build.
+
+CI runs the suite on Windows, macOS, and Linux for every push and pull request,
+and the release build has `needs: test` — a failing suite blocks publishing.
+
 ## Building a standalone app
 
 Produces a single file that runs with no Python installed.
@@ -49,7 +71,7 @@ GitHub Release.
 
 1. Bump `APP_VERSION` in `config.py` to the new version (no `v` prefix).
 2. Add a section for it in [CHANGELOG.md](CHANGELOG.md).
-3. Commit both.
+3. Commit both (CI runs the tests on push).
 4. Tag and push:
 
 ```bash
@@ -104,6 +126,27 @@ Stored in the per-user data folder (see the README for the path per OS):
   time**, so they're retroactive and reversible.
 * `config.json` — settings (below).
 * `app.log` — error log.
+* `backups/` — dated copies (see below).
+
+### Backups
+
+A backup runs once a day, checked cheaply on the tracker's existing flush cycle,
+keeping the newest `backup_keep` (default 7) copies as
+`backups/data-YYYY-MM-DD.db` plus the matching `config-*.json`.
+
+`Storage.backup_to()` uses **SQLite's backup API**, not a file copy. This matters:
+in WAL mode most recent commits live in the `-wal` sidecar, so copying `data.db`
+would miss them and could catch a half-written state. The backup runs against
+the live connection, produces one self-contained file, and is followed by a
+`wal_checkpoint(TRUNCATE)` to stop the WAL growing unbounded. Writes go to a
+`.part` file and are then renamed, so an interrupted run can't leave a truncated
+file looking like a good backup. Failures are logged and swallowed — a backup
+must never take the tracker down.
+
+Set `backup_dir` to a synced folder (OneDrive, Nextcloud…) for off-machine
+safety; a copy on the same disk won't survive a drive failure. To restore: quit
+the app, copy a backup over `data.db`, delete the leftover `-wal`/`-shm` files,
+and relaunch.
 
 Upgrading from the old "Work Time Tracker"? The data folder is migrated
 automatically on first launch.
@@ -119,7 +162,10 @@ automatically on first launch.
   "ignore_apps": ["lockapp.exe"],
   "file_rules": {},
   "merges": [],
-  "check_updates_on_startup": true
+  "check_updates_on_startup": true,
+  "backup_enabled": true,
+  "backup_dir": "",
+  "backup_keep": 7
 }
 ```
 

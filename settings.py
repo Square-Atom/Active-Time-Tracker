@@ -7,12 +7,15 @@ rows in `_build` (and read them in `_save`) to grow it over time.
 
 from __future__ import annotations
 
+import os
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 import autostart
+import backups
 import config
 import dashboard as theme  # reuse the dashboard's colour constants
+import sysinfo
 import updatedialog
 import updater
 
@@ -142,6 +145,35 @@ class SettingsWindow:
         self.update_status = ttk.Label(row, text="", style="SHint.TLabel")
         self.update_status.pack(side="left", padx=(10, 0))
 
+        ttk.Separator(frm).pack(fill="x", pady=12, **pad)
+        ttk.Label(frm, text="BACKUP", style="SSection.TLabel").pack(anchor="w", **pad)
+
+        self.backup_var = tk.BooleanVar(value=self.cfg.backup_enabled)
+        row = ttk.Frame(frm, style="S.TFrame")
+        row.pack(fill="x", pady=(4, 0), **pad)
+        ttk.Checkbutton(row, text="Back up my data daily", variable=self.backup_var,
+                        style="S.TCheckbutton", takefocus=False).pack(anchor="w")
+        ttk.Label(frm, text=f"Keeps the {self.cfg.backup_keep} most recent copies. "
+                            "Choose a synced folder (OneDrive, Nextcloud…) to keep "
+                            "them off this machine.",
+                  style="SHint.TLabel", wraplength=430, justify="left").pack(
+            anchor="w", **pad)
+
+        self.backup_path_var = tk.StringVar(value=backups.backup_dir(self.cfg))
+        ttk.Label(frm, textvariable=self.backup_path_var, style="SHint.TLabel",
+                  wraplength=430, justify="left").pack(anchor="w", pady=(4, 0), **pad)
+
+        row = ttk.Frame(frm, style="S.TFrame")
+        row.pack(fill="x", pady=(6, 0), **pad)
+        ttk.Button(row, text="Change folder…", style="SSmall.TButton",
+                   command=self._choose_backup_dir).pack(side="left")
+        ttk.Button(row, text="Open folder", style="SSmall.TButton",
+                   command=self._open_backup_dir).pack(side="left", padx=(6, 0))
+        ttk.Button(row, text="Back up now", style="SSmall.TButton",
+                   command=self._backup_now).pack(side="left", padx=(6, 0))
+        self.backup_status = ttk.Label(row, text="", style="SHint.TLabel")
+        self.backup_status.pack(side="left", padx=(10, 0))
+
         # Buttons
         btns = ttk.Frame(frm, style="S.TFrame")
         btns.pack(fill="x", pady=(18, 0), **pad)
@@ -153,6 +185,38 @@ class SettingsWindow:
     def _open_ignore(self) -> None:
         if self.open_ignore_cb:
             self.open_ignore_cb()
+
+    # -- backup -----------------------------------------------------------
+
+    def _pending_cfg(self) -> config.Config:
+        """A view of the config with the not-yet-saved backup folder applied."""
+        chosen = self.backup_path_var.get().strip()
+        default = os.path.join(config.APP_DIR, "backups")
+        self.cfg.backup_dir = "" if chosen in ("", default) else chosen
+        return self.cfg
+
+    def _choose_backup_dir(self) -> None:
+        chosen = filedialog.askdirectory(
+            parent=self.win, title="Choose a backup folder",
+            initialdir=self.backup_path_var.get() or config.APP_DIR)
+        if chosen:
+            self.backup_path_var.set(os.path.normpath(chosen))
+
+    def _open_backup_dir(self) -> None:
+        path = self.backup_path_var.get()
+        try:
+            os.makedirs(path, exist_ok=True)
+            sysinfo.open_path(path)
+        except OSError:
+            messagebox.showwarning("Backup", f"Couldn't open:\n{path}",
+                                   parent=self.win)
+
+    def _backup_now(self) -> None:
+        self.backup_status.configure(text="Backing up…")
+        self.win.update_idletasks()
+        path = backups.run(self.storage, self._pending_cfg()) if self.storage else None
+        self.backup_status.configure(
+            text=f"Saved {os.path.basename(path)}" if path else "Backup failed")
 
     def _check_updates(self) -> None:
         self.update_btn.configure(state="disabled")
@@ -211,6 +275,8 @@ class SettingsWindow:
         self.cfg.idle_timeout_seconds = idle
         self.cfg.poll_interval_seconds = poll
         self.cfg.check_updates_on_startup = bool(self.check_updates_var.get())
+        self.cfg.backup_enabled = bool(self.backup_var.get())
+        self._pending_cfg()  # normalises backup_dir ("" when it's the default)
 
         autostart_changed = self.autostart_var.get() != self.cfg.autostart
         if autostart_changed:
