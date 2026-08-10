@@ -3,7 +3,7 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
-## [Unreleased]
+## [1.3.1] — 2026-08-10
 
 ### Changed
 - **Hovering any row highlights it**, including files and websites. The gap
@@ -143,6 +143,7 @@ First release.
   Windows/macOS/Linux release builds through GitHub Actions.
 - Local SQLite storage — data never leaves the machine.
 
+[1.3.1]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.3.1
 [1.3.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.1.0
