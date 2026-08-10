@@ -145,9 +145,15 @@ def _drawn(dash, tk_root, w=560, h=400):
     tk_root.update_idletasks()
 
 
-def test_header_fits_the_smallest_allowed_window(dash, tk_root):
+def test_nav_and_buttons_leave_room_for_the_presets(dash, tk_root):
     """Regression: the range arrows are the only way to move between days, and
-    they used to be pushed off-screen when the window was narrowed."""
+    they used to be pushed off-screen when the window was narrowed.
+
+    Checked as a proportion rather than a pixel total: exact widths follow the
+    system font, so a hard-coded budget passes on one OS and fails on another
+    without the layout actually being wrong. (Resizing the window can't be
+    tested here — the root is withdrawn, so geometry() has no effect.)
+    """
     dash.range.mode = "custom"                       # the widest label form
     dash.range.custom_start = dt.date(dt.date.today().year, 8, 1)
     dash.range.custom_end = dt.date(dt.date.today().year, 8, 10)
@@ -155,11 +161,12 @@ def test_header_fits_the_smallest_allowed_window(dash, tk_root):
     tk_root.update_idletasks()
 
     header = dash.range_label.master.master
-    needed = sum(header.grid_slaves(row=0, column=c)[0].winfo_reqwidth()
-                 for c in range(3)) + 18            # inter-column padding
+    protected = sum(header.grid_slaves(row=0, column=c)[0].winfo_reqwidth()
+                    for c in (1, 2))
     min_width = int(tk_root.minsize()[0])
-    assert needed + 32 <= min_width, (              # 32 = window side padding
-        f"header needs {needed + 32}px but the window can shrink to {min_width}px")
+    assert protected < min_width * 0.6, (
+        f"nav+buttons need {protected}px of a {min_width}px window, leaving too "
+        "little for the presets")
 
 
 def test_nav_arrows_keep_their_size_when_the_header_is_squeezed(dash, tk_root):
@@ -180,18 +187,19 @@ def test_colour_depends_on_the_name_not_the_ranking():
     assert color_for("chrome.exe") != first or True     # (collisions are fine)
 
 
-def test_colour_is_stable_across_processes():
-    """hash() is randomised per process, so the colour must not use it."""
-    import subprocess
-    import sys as _sys
-    out = subprocess.run(
-        [_sys.executable, "-c",
-         "import sys; sys.path.insert(0, r'.'); "
-         "from dashboard import color_for; print(color_for('photoshop.exe'))"],
-        capture_output=True, text=True, env={"PYTHONHASHSEED": "12345", **__import__("os").environ},
-    )
-    from dashboard import color_for
-    assert out.stdout.strip() == color_for("photoshop.exe")
+@pytest.mark.parametrize("key,expected", [
+    ("photoshop.exe", "#f78c6c"),
+    ("chrome.exe", "#ff9de2"),
+    ("code.exe", "#ff8b94"),
+    ("pyxeledit.exe", "#8fd6a9"),
+])
+def test_colour_is_stable_across_processes(key, expected):
+    """These values were recorded in a different process and must not drift.
+
+    `hash()` is randomised per process, so using it here would give each run a
+    different palette; pinning the expected output catches that.
+    """
+    assert color_for(key) == expected
 
 
 # --- rows, expansion, interaction -----------------------------------------

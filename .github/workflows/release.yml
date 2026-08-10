@@ -44,11 +44,27 @@ jobs:
 
       - name: Run tests (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a python -m pytest -rs
+        shell: bash
+        run: |
+          set -o pipefail
+          xvfb-run -a python -m pytest -rs --tb=short 2>&1 | tee pytest.log
 
       - name: Run tests
         if: runner.os != 'Linux'
-        run: python -m pytest -rs
+        shell: bash
+        run: |
+          set -o pipefail
+          python -m pytest -rs --tb=short 2>&1 | tee pytest.log
+
+      # Job logs need a token to read; annotations don't. Surfacing the failing
+      # test names here makes a red build diagnosable from the API alone.
+      - name: Surface failing tests
+        if: failure()
+        shell: bash
+        run: |
+          grep -E '^(FAILED|ERROR)' pytest.log | while IFS= read -r line; do
+            echo "::error::$line"
+          done || true
 
   build:
     needs: test          # never publish something that failed its tests
