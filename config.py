@@ -110,6 +110,91 @@ GENERIC_PATH_RE = re.compile(
 GENERIC_FILE_RE = re.compile(r'(?P<file>[^\\/:*?"<>|\r\n]+\.[A-Za-z0-9]{1,6})')
 
 
+# --- browser "which site am I on" detection ---------------------------------
+# Window titles never contain the URL, only the page title (e.g.
+# "Facebook - Google Chrome"). We strip the browser's own suffix and then take
+# the site name from the page title. See `parse_site`.
+
+# Trailing browser branding. Only Edge inserts a profile segment before its
+# name ("Page - Personal - Microsoft Edge"), so that allowance is Edge-only —
+# applying it generally would swallow the real site in "… - YouTube - Chrome".
+_BRANDS = (r"Google\s+Chrome|Chromium|Mozilla\s+Firefox|Firefox|Brave"
+           r"|Opera(?:\s+\w+)?|Vivaldi|Safari|Arc|Zen\s+Browser")
+_EDGE = r"Microsoft​?\s*Edge"
+_BROWSER_SUFFIX_RE = re.compile(
+    rf"\s*[-—–|]\s*(?:(?:{_BRANDS})|(?:[^-—–|]{{1,30}}\s*[-—–|]\s*)?(?:{_EDGE}))\s*$",
+    re.IGNORECASE,
+)
+# A window showing nothing but the browser's own name has no site to report.
+_BRAND_ONLY_RE = re.compile(rf"^\s*(?:{_BRANDS}|{_EDGE})\s*$", re.IGNORECASE)
+# "…and 4 more pages" (Edge), and leading unread counters like "(3) ".
+_MORE_PAGES_RE = re.compile(r"\s+and\s+\d+\s+more\s+pages?\s*$", re.IGNORECASE)
+_LEADING_COUNT_RE = re.compile(r"^\s*\(\d+\)\s*")
+# Separators that page titles use between the content and the site name.
+_TITLE_SPLIT_RE = re.compile(r"\s+(?:[-—–|·•»]|::|:|/)\s+")
+
+# Titles that put the site first, or otherwise need a canonical spelling. Keys
+# are lowercase; matched against any segment of the page title.
+KNOWN_SITES = {
+    "youtube": "YouTube", "github": "GitHub", "gitlab": "GitLab",
+    "facebook": "Facebook", "instagram": "Instagram", "reddit": "Reddit",
+    "stack overflow": "Stack Overflow", "x": "X", "twitter": "Twitter",
+    "gmail": "Gmail", "google docs": "Google Docs", "google drive": "Google Drive",
+    "google sheets": "Google Sheets", "google slides": "Google Slides",
+    "google search": "Google", "google maps": "Google Maps",
+    "wikipedia": "Wikipedia", "linkedin": "LinkedIn", "twitch": "Twitch",
+    "discord": "Discord", "notion": "Notion", "chatgpt": "ChatGPT",
+    "claude": "Claude", "netflix": "Netflix", "spotify": "Spotify",
+    "steam": "Steam", "figma": "Figma", "trello": "Trello", "jira": "Jira",
+    "slack": "Slack", "zoom": "Zoom", "tiktok": "TikTok", "medium": "Medium",
+    "pinterest": "Pinterest", "artstation": "ArtStation", "behance": "Behance",
+    "dribbble": "Dribbble", "deviantart": "DeviantArt", "itch.io": "itch.io",
+    "hacker news": "Hacker News", "outlook": "Outlook", "microsoft teams": "Teams",
+    "stack exchange": "Stack Exchange", "codepen": "CodePen", "replit": "Replit",
+    "udemy": "Udemy", "coursera": "Coursera", "amazon": "Amazon",
+    "bing": "Bing", "duckduckgo": "DuckDuckGo", "whatsapp": "WhatsApp",
+    "messenger": "Messenger", "telegram": "Telegram", "google": "Google",
+}
+
+_MAX_SITE_LEN = 40
+
+
+def parse_site(title: str) -> str:
+    """Best-effort site name from a browser window title.
+
+    Titles carry the page title, not the URL, so this is a heuristic: prefer a
+    known site appearing anywhere in the title, else fall back to the last
+    segment (the usual place for the site name, e.g. "Video - YouTube").
+    Returns '' when there's nothing useful, which counts as app-level time.
+    """
+    if not title:
+        return ""
+    page = _BROWSER_SUFFIX_RE.sub("", title.strip())
+    page = _MORE_PAGES_RE.sub("", page)
+    page = _LEADING_COUNT_RE.sub("", page).strip()
+    if not page or _BRAND_ONLY_RE.match(page):
+        return ""
+
+    segments = [s.strip() for s in _TITLE_SPLIT_RE.split(page) if s.strip()]
+    if not segments:
+        return ""
+
+    # A known site anywhere in the title wins (handles "GitHub - user/repo",
+    # where the site name comes first).
+    for seg in segments:
+        canon = KNOWN_SITES.get(seg.casefold())
+        if canon:
+            return canon
+        if seg.casefold().startswith("r/"):
+            return "Reddit"
+
+    # Otherwise the last segment is conventionally the site.
+    site = segments[-1]
+    if len(site) > _MAX_SITE_LEN:
+        site = site[:_MAX_SITE_LEN - 1].rstrip() + "…"
+    return site
+
+
 # Per-app rules for extracting the open file from the window title.
 #   list of regex patterns -> first pattern with a named group `file` wins
 #   ["app"]                 -> track at app level only (no per-file split)
@@ -152,10 +237,20 @@ DEFAULT_FILE_RULES: dict[str, list[str]] = {
     "activetimetracker.exe": ["app"],
     "activetimetracker": ["app"],
     "worktimetracker.exe": ["app"],
-    # Browsers & shell: app-level only (titles are pages/folders, too noisy).
-    "chrome.exe": ["app"],
-    "msedge.exe": ["app"],
-    "firefox.exe": ["app"],
+    # Browsers: split by website (read from the page title — see `parse_site`).
+    "chrome.exe": ["site"],
+    "msedge.exe": ["site"],
+    "firefox.exe": ["site"],
+    "brave.exe": ["site"],
+    "opera.exe": ["site"],
+    "vivaldi.exe": ["site"],
+    "chromium.exe": ["site"],
+    "arc.exe": ["site"],
+    "safari": ["site"],           # macOS
+    "google chrome": ["site"],    # macOS binary names
+    "firefox": ["site"],
+    "microsoft edge": ["site"],
+    # Shell: app-level only (titles are folder names, too noisy).
     "explorer.exe": ["app"],
 }
 
@@ -291,6 +386,8 @@ def parse_file(exe: str, title: str, rules: dict[str, list[str]]) -> str:
     patterns = rules.get(exe)
     if patterns == ["app"]:
         return ""
+    if patterns == ["site"]:
+        return parse_site(title)
     generic = [GENERIC_PATH_RE.pattern, GENERIC_FILE_RE.pattern]
     if patterns == ["auto"] or not patterns:
         use = generic

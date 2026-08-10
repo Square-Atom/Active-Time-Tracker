@@ -35,6 +35,9 @@ Click the tray icon to open the dashboard.
   Range**. Use ◀ ▶ to step to the previous/next period.
 * **See your apps** — the left list shows time per app. **Click an app** to break
   it down by file in the chart; click it again to go back.
+* **Browsers break down by website** — click Chrome, Edge or Firefox to see
+  which sites your time went to (read from the page title, so the name may not
+  exactly match the domain).
 * **Trend chart** at the bottom shows your activity over time — drag the divider
   above it to make it taller or shorter.
 

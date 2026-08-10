@@ -3,6 +3,18 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## [Unreleased]
+
+### Added
+- **Website tracking for browsers.** Chrome, Edge, Firefox, Brave, Opera and
+  Vivaldi now break their time down by site (YouTube, GitHub, Facebook, …)
+  instead of being a single lump. Click the browser in the dashboard to see it.
+
+  Site names are read from the page title — window titles never expose the URL —
+  so a name can differ from the actual domain, and unusual title formats may
+  show an odd label. Turn it off per browser with right-click → *Track files for
+  this app*.
+
 ## [1.1.0] — 2026-08-09
 
 ### Added

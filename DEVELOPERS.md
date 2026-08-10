@@ -153,7 +153,30 @@ Right-clicking an app in the dashboard → **Track files for this app** writes
 * `["app"]` — never split by file (app-level only).
 * `["auto"]` — force generic detection ("first name.ext in the title"), even for
   apps that default to app-level.
+* `["site"]` — treat the title as a browser page title and record the **website**
+  (see below). The default for Chrome/Edge/Firefox/Brave/Opera/Vivaldi.
 * omit an app — use its built-in rule, or generic if it has none.
+
+### Website tracking (`["site"]`)
+
+Window titles never contain the URL — only the page title (`"Facebook - Google
+Chrome"`). `config.parse_site` therefore works heuristically:
+
+1. Strip the browser's own suffix. Edge is special-cased because it inserts a
+   zero-width space in "Microsoft​ Edge" and may add a profile segment
+   (`"Page - Personal - Microsoft Edge"`); that allowance must **not** be applied
+   to other browsers or it swallows the real site in `"… - YouTube - Chrome"`.
+   Also strips `"and N more pages"` and leading unread counters like `"(3) "`.
+2. Split the page title on the usual separators (`-`, `|`, `·`, `/`, `:`, …).
+3. If any segment matches `KNOWN_SITES`, use its canonical name — this handles
+   sites that put their name *first* (`"GitHub - user/repo: …"`). Segments
+   starting with `r/` map to Reddit.
+4. Otherwise use the **last** segment, which is where site names conventionally
+   live (`"Video title - YouTube"`). Truncated at 40 chars.
+
+Getting real domains would need UI Automation to read the address bar: Windows-
+only, an extra dependency, and it forces Chrome's accessibility tree on (raising
+Chrome's own CPU/memory). That trade-off was rejected in favour of this.
 
 Advanced users can hand-write a custom regex list (first pattern with a named
 `(?P<file>…)` group wins), e.g.

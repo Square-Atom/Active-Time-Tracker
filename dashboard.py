@@ -568,6 +568,20 @@ class Dashboard:
         members = getattr(self, "_app_members", {}).get(self.selected_app, [self.selected_app])
         self._data_files = self.storage.totals_by_file(start, end, members)
 
+    _NOTE_FILES = ("ⓘ Files are matched by name — same-named files may share a row "
+                   "unless the app shows their folder.")
+    _NOTE_SITES = ("ⓘ Sites are read from the page title, so a name may differ "
+                   "from the actual website.")
+
+    def _chart_note_text(self) -> str:
+        cfg = self.tracker.cfg if self.tracker else None
+        if cfg and self.selected_app:
+            members = [m for m in self._members_of(self.selected_app)
+                       if not m.startswith(config.MERGE_PREFIX)]
+            if members and all(cfg.merged_rules.get(m) == ["site"] for m in members):
+                return self._NOTE_SITES
+        return self._NOTE_FILES
+
     def _update_chart_for_selection(self) -> None:
         showing_files = bool(self.selected_app and self._data_files)
         if showing_files:
@@ -578,8 +592,9 @@ class Dashboard:
         else:
             self.chart_title.configure(text="TOP APPLICATIONS")
             items = [(a["app_name"], a["seconds"]) for a in self._data_apps]
-        # The name-matching caveat only applies to the per-file view.
+        # Caveat text depends on what the rows actually are.
         if showing_files:
+            self.chart_note.configure(text=self._chart_note_text())
             self.chart_note.grid(row=1, column=0, sticky="w", pady=(0, 4))
         else:
             self.chart_note.grid_remove()
