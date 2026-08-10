@@ -33,8 +33,9 @@ Click the tray icon to open the dashboard.
 
 * **Pick a period** — Today, This Week, This Month, This Year, or a **Custom
   Range**. Use ◀ ▶ to step to the previous/next period.
-* **See your apps** — the left list shows time per app. **Click an app** to break
-  it down by file in the chart; click it again to go back.
+* **See your apps** — one row each, showing name, bar, time and share of the
+  day. **Click a row** to expand it into the files you worked on; click again to
+  collapse. Each app keeps its own colour, so it looks the same day to day.
 * **Browsers break down by website** — click Chrome, Edge or Firefox to see
   which sites your time went to (read from the page title, so the name may not
   exactly match the domain).

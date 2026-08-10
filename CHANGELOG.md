@@ -3,6 +3,26 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## [Unreleased]
+
+### Changed
+- **The home screen is now a single chart.** The separate applications table is
+  gone; every application is one row showing **name · bar · time · percent**.
+  Click a row to expand it into the files (or websites) inside it, click again
+  to collapse, and right-click any row for the same quick actions as before.
+  The list scrolls when it doesn't fit, so nothing is hidden behind a
+  "+N more".
+- **Each app keeps its own colour.** Colours were assigned by position, so an
+  app changed colour whenever the ranking shifted. They're now derived from the
+  app's name and stay put from day to day; files use a dimmed shade of their
+  app's colour.
+
+### Fixed
+- Filenames containing a hyphen were truncated at the last hyphen —
+  `clockwork-workshop.pyxel` was recorded as `workshop.pyxel`. Dashes now only
+  separate the app name from the filename when surrounded by spaces.
+  (Time logged before this fix keeps the shortened name.)
+
 ## [1.2.0] — 2026-08-10
 
 ### Added

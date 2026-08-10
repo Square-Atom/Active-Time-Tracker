@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import calendar
 import datetime as dt
+import hashlib
 import tkinter as tk
 from tkinter import ttk
 
@@ -26,6 +27,26 @@ BAR_COLORS = [
     "#7c9cff", "#7ce0c3", "#ffcb6b", "#ff8b94", "#c792ea",
     "#82d8ff", "#f78c6c", "#a6e22e", "#ff9de2", "#8fd6a9",
 ]
+ROW_HOVER = "#31324a"
+
+
+def color_for(key: str) -> str:
+    """A stable colour for an app or file.
+
+    Derived from the name, not its position in the list, so an app keeps the
+    same colour as its ranking moves around and between days. `hash()` is
+    randomised per process, hence md5.
+    """
+    digest = hashlib.md5(key.encode("utf-8", "replace")).digest()
+    return BAR_COLORS[digest[0] % len(BAR_COLORS)]
+
+
+def _blend(color: str, other: str, amount: float) -> str:
+    """Mix `color` toward `other` (0.0 = unchanged, 1.0 = fully `other`)."""
+    a = [int(color[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(other[i:i + 2], 16) for i in (1, 3, 5)]
+    mixed = [round(x + (y - x) * amount) for x, y in zip(a, b)]
+    return "#%02x%02x%02x" % tuple(mixed)
 
 
 def fmt_duration(seconds: float) -> str:
@@ -142,7 +163,7 @@ class Dashboard:
         self.open_settings_cb = open_settings
         self.open_merges_cb = open_merges
         self.range = RangeState()
-        self.selected_app: str | None = None
+        self.expanded: set[str] = set()   # app keys whose files are shown
         self._refresh_job = None
         self._visible = False
         self._trend_height = 190  # default trend pane height (drag-adjustable)
@@ -237,48 +258,39 @@ class Dashboard:
         self.main_paned.pack(fill="both", expand=True, padx=16, pady=(0, 12))
         self.main_paned.bind("<ButtonRelease-1>", lambda e: self._remember_trend_height())
 
-        # body: apps | (chart)
+        # body: one full-width chart — every application is a clickable row that
+        # expands to show its files.
         body = ttk.Frame(self.main_paned)
-        body.columnconfigure(0, weight=3, uniform="col")
-        body.columnconfigure(1, weight=4, uniform="col")
-        body.rowconfigure(0, weight=1)
+        body.columnconfigure(0, weight=1)
+        body.rowconfigure(2, weight=1)
         self.main_paned.add(body, weight=4)
 
-        # Apps
-        left = ttk.Frame(body)
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        ttk.Label(left, text="APPLICATIONS", style="Muted.TLabel").pack(anchor="w", pady=(0, 4))
-        self.app_tree = ttk.Treeview(left, columns=("time", "pct"), show="tree headings",
-                                     selectmode="browse")
-        self.app_tree.heading("#0", text="App")
-        self.app_tree.heading("time", text="Time")
-        self.app_tree.heading("pct", text="%")
-        self.app_tree.column("#0", width=180, anchor="w")
-        self.app_tree.column("time", width=90, anchor="e")
-        self.app_tree.column("pct", width=50, anchor="e")
-        self.app_tree.pack(fill="both", expand=True)
-        self.app_tree.bind("<<TreeviewSelect>>", self._on_app_select)
-        self.app_tree.bind("<Button-1>", self._on_app_left_click)
-        self.app_tree.bind("<Button-3>", self._on_app_right_click)
-
-        # Right column
-        right = ttk.Frame(body)
-        right.grid(row=0, column=1, sticky="nsew")
-        right.rowconfigure(2, weight=1)
-        right.columnconfigure(0, weight=1)
-
-        self.chart_title = ttk.Label(right, text="TOP APPLICATIONS", style="Muted.TLabel")
+        self.chart_title = ttk.Label(body, text="APPLICATIONS", style="Muted.TLabel")
         self.chart_title.grid(row=0, column=0, sticky="w", pady=(0, 4))
-        # Shown only in the per-file view: files are identified from the window
-        # title, so same-named files can share a row.
-        self.chart_note = ttk.Label(
-            right,
-            text="ⓘ Files are matched by name — same-named files may share a row "
-                 "unless the app shows their folder.",
-            style="Note.TLabel", wraplength=420, justify="left")
-        self.chart = tk.Canvas(right, bg=PANEL, highlightthickness=0, height=200)
-        self.chart.grid(row=2, column=0, sticky="nsew")
+        # Only meaningful once a row is expanded: files/sites come from window
+        # titles, so same-named entries can share a row.
+        self.chart_note = ttk.Label(body, text="", style="Note.TLabel",
+                                    wraplength=620, justify="left")
+
+        chart_wrap = ttk.Frame(body)
+        chart_wrap.grid(row=2, column=0, sticky="nsew")
+        chart_wrap.rowconfigure(0, weight=1)
+        chart_wrap.columnconfigure(0, weight=1)
+        self.chart = tk.Canvas(chart_wrap, bg=PANEL, highlightthickness=0, height=200)
+        self.chart.grid(row=0, column=0, sticky="nsew")
+        self.chart_scroll = ttk.Scrollbar(chart_wrap, orient="vertical",
+                                          command=self.chart.yview)
+        self.chart.configure(yscrollcommand=self._on_chart_scrolled)
         self.chart.bind("<Configure>", lambda e: self._draw_chart())
+        self.chart.bind("<Button-1>", self._on_chart_click)
+        self.chart.bind("<Button-3>", self._on_chart_right_click)
+        self.chart.bind("<Motion>", self._on_chart_motion)
+        self.chart.bind("<Leave>", lambda e: self._set_hover(None))
+        # Mouse wheel: Windows/macOS send <MouseWheel>, X11 sends Button-4/5.
+        self.chart.bind("<MouseWheel>",
+                        lambda e: self._scroll_chart(-1 if e.delta > 0 else 1))
+        self.chart.bind("<Button-4>", lambda e: self._scroll_chart(-1))
+        self.chart.bind("<Button-5>", lambda e: self._scroll_chart(1))
 
         # --- trend (multi-day only; added to the paned window in refresh) ---
         self.trend_frame = ttk.Frame(self.main_paned)
@@ -291,20 +303,20 @@ class Dashboard:
         self.trend.bind("<Configure>", lambda e: self._draw_trend())
 
         self._data_apps: list[dict] = []
-        self._data_files: list[dict] = []
+        self._data_files: dict[str, list[dict]] = {}   # app key -> its files
         self._data_trend: dict[str, float] = {}
         self._grand = 0.0
+        self._rows: list[dict] = []                    # drawn rows, for hit tests
+        self._hover: str | None = None
 
     # -- events -----------------------------------------------------------
 
     def _set_mode(self, mode: str) -> None:
         self.range.set_mode(mode)
-        self.selected_app = None
-        self.refresh()
+        self.refresh()   # expanded rows persist; refresh drops any that vanish
 
     def _nav(self, direction: int) -> None:
         self.range.shift(direction)
-        self.selected_app = None
         self.refresh()
 
     def _open_custom_range(self) -> None:
@@ -320,7 +332,6 @@ class Dashboard:
         self.range.mode = "custom"
         self.range.custom_start = start
         self.range.custom_end = end
-        self.selected_app = None
         self.refresh()
 
     def _ask_custom_range(self, s0: dt.date, e0: dt.date):
@@ -413,42 +424,71 @@ class Dashboard:
         dlg.wait_window()
         return result["val"]
 
-    def _on_app_select(self, _event=None) -> None:
-        sel = self.app_tree.selection()
-        self.selected_app = sel[0] if sel else None
-        self._load_files()
-        self._update_chart_for_selection()
+    # -- chart interaction ------------------------------------------------
 
-    def _on_app_left_click(self, event):
-        # Clicking the already-selected app deselects it (back to top apps).
-        row = self.app_tree.identify_row(event.y)
-        if row and row == self.selected_app:
-            self.app_tree.selection_remove(row)
-            self.selected_app = None
-            self._load_files()
-            self._update_chart_for_selection()
-            return "break"
+    def _row_at(self, event) -> dict | None:
+        """The drawn row under the pointer (the canvas scrolls, so convert)."""
+        y = self.chart.canvasy(event.y)
+        for row in self._rows:
+            if row["y0"] <= y < row["y1"]:
+                return row
         return None
+
+    def _on_chart_click(self, event):
+        row = self._row_at(event)
+        if not row or row["kind"] != "app":
+            return None
+        if not row["has_files"]:
+            return None                     # nothing to expand
+        key = row["key"]
+        if key in self.expanded:
+            self.expanded.discard(key)
+        else:
+            self.expanded.add(key)
+        self.refresh()
+        return "break"
+
+    def _on_chart_motion(self, event) -> None:
+        row = self._row_at(event)
+        key = row["key"] if row and row["kind"] == "app" and row["has_files"] else None
+        self._set_hover(key)
+
+    def _set_hover(self, key) -> None:
+        if key != self._hover:
+            self._hover = key
+            self.chart.configure(cursor="hand2" if key else "")
+            self._draw_chart()
+
+    def _scroll_chart(self, direction: int) -> None:
+        self.chart.yview_scroll(direction * 2, "units")
+
+    def _on_chart_scrolled(self, first: str, last: str) -> None:
+        """Show the scrollbar only when the rows don't all fit."""
+        self.chart_scroll.set(first, last)
+        needed = not (float(first) <= 0.0 and float(last) >= 1.0)
+        if needed and not self.chart_scroll.winfo_ismapped():
+            self.chart_scroll.grid(row=0, column=1, sticky="ns")
+        elif not needed and self.chart_scroll.winfo_ismapped():
+            self.chart_scroll.grid_remove()
 
     # -- right-click context menu ----------------------------------------
 
     def _members_of(self, key: str) -> list[str]:
         return getattr(self, "_app_members", {}).get(key, [key])
 
-    def _on_app_right_click(self, event) -> None:
+    def _on_chart_right_click(self, event) -> None:
         cfg = self.tracker.cfg if self.tracker else None
         if cfg is None:
             return
-        row = self.app_tree.identify_row(event.y)
+        row = self._row_at(event)
         if not row:
             return
-        self.app_tree.selection_set(row)
-        self.selected_app = row
-        self._load_files()
-        self._update_chart_for_selection()
+        # Right-clicking a file acts on the app it belongs to.
+        key = row["key"] if row["kind"] == "app" else row["app"]
+        name = next((r["label"] for r in self._rows
+                     if r["kind"] == "app" and r["key"] == key), key)
 
-        members = [m for m in self._members_of(row) if not m.startswith(config.MERGE_PREFIX)]
-        name = self.app_tree.item(row, "text")
+        members = [m for m in self._members_of(key) if not m.startswith(config.MERGE_PREFIX)]
         tracks = bool(members) and all(cfg.tracks_files(m) for m in members)
 
         menu = tk.Menu(self.root, tearoff=0, bg="#f6f6fa", fg="#1e1f2b",
@@ -480,7 +520,6 @@ class Dashboard:
             if m and m not in cfg.ignore_apps:
                 cfg.ignore_apps.append(m)
         cfg.save()
-        self.selected_app = None
         self.refresh()
 
     # -- data + rendering -------------------------------------------------
@@ -505,22 +544,12 @@ class Dashboard:
         self.range_label.configure(text=self.range.label())
         self.total_label.configure(text=fmt_duration(self._grand))
 
-        # apps tree
-        prev = self.selected_app
-        self.app_tree.delete(*self.app_tree.get_children())
-        for a in self._data_apps:
-            pct = (a["seconds"] / self._grand * 100) if self._grand else 0
-            self.app_tree.insert("", "end", iid=a["app"], text=a["app_name"],
-                                 values=(fmt_duration(a["seconds"]), f"{pct:.0f}%"))
-        # keep selection if still present
-        if prev and self.app_tree.exists(prev):
-            self.app_tree.selection_set(prev)
-            self.selected_app = prev
-        else:
-            self.selected_app = None
-
+        # Forget expansions for apps that no longer appear in this range.
+        present = {a["app"] for a in self._data_apps}
+        self.expanded &= present
         self._load_files()
-        self._update_chart_for_selection()
+        self._update_note()
+        self._draw_chart()
 
         # trend visibility (as a resizable bottom pane)
         panes = self.main_paned.panes()
@@ -539,101 +568,145 @@ class Dashboard:
         self._update_status()
 
     def _load_files(self) -> None:
-        # Per-file data feeds the chart when an app is selected (the separate
-        # file table was removed as it duplicated the chart).
-        if not self.selected_app:
-            self._data_files = []
-            return
+        """Fetch per-file rows for the expanded apps only (lazy, not for all)."""
         start, end = self.range.bounds()
-        members = getattr(self, "_app_members", {}).get(self.selected_app, [self.selected_app])
-        self._data_files = self.storage.totals_by_file(start, end, members)
+        self._data_files = {}
+        for key in self.expanded:
+            members = self._members_of(key)
+            self._data_files[key] = self.storage.totals_by_file(start, end, members)
+
+    def _has_files(self, app: dict) -> bool:
+        """Whether this app is worth expanding.
+
+        Cheap guess from the config rather than a query per app: an app-level
+        rule can never produce file rows. Apps that do track files but happen to
+        have only unnamed time expand to a single "(no file)" row, which is
+        honest rather than a dead click.
+        """
+        cfg = self.tracker.cfg if self.tracker else None
+        if cfg is None:
+            return False
+        members = [m for m in self._members_of(app["app"])
+                   if not m.startswith(config.MERGE_PREFIX)]
+        return any(cfg.tracks_files(m) for m in members)
 
     _NOTE_FILES = ("ⓘ Files are matched by name — same-named files may share a row "
                    "unless the app shows their folder.")
     _NOTE_SITES = ("ⓘ Sites are read from the page title, so a name may differ "
                    "from the actual website.")
 
-    def _chart_note_text(self) -> str:
+    def _update_note(self) -> None:
+        """Explain the naming caveat, but only while a row is expanded."""
         cfg = self.tracker.cfg if self.tracker else None
-        if cfg and self.selected_app:
-            members = [m for m in self._members_of(self.selected_app)
-                       if not m.startswith(config.MERGE_PREFIX)]
-            if members and all(cfg.merged_rules.get(m) == ["site"] for m in members):
-                return self._NOTE_SITES
-        return self._NOTE_FILES
-
-    def _update_chart_for_selection(self) -> None:
-        showing_files = bool(self.selected_app and self._data_files)
-        if showing_files:
-            app_name = next((a["app_name"] for a in self._data_apps
-                             if a["app"] == self.selected_app), self.selected_app)
-            self.chart_title.configure(text=f"TIME BY FILE · {app_name.upper()}")
-            items = [(f["file"] or "(general)", f["seconds"]) for f in self._data_files]
-        else:
-            self.chart_title.configure(text="TOP APPLICATIONS")
-            items = [(a["app_name"], a["seconds"]) for a in self._data_apps]
-        # Caveat text depends on what the rows actually are.
-        if showing_files:
-            self.chart_note.configure(text=self._chart_note_text())
-            self.chart_note.grid(row=1, column=0, sticky="w", pady=(0, 4))
-        else:
+        if not (cfg and self.expanded):
             self.chart_note.grid_remove()
-        self._chart_items = items[:10]
-        self._draw_chart()
+            return
+        site_only = True
+        for key in self.expanded:
+            members = [m for m in self._members_of(key)
+                       if not m.startswith(config.MERGE_PREFIX)]
+            if not (members and all(cfg.merged_rules.get(m) == ["site"] for m in members)):
+                site_only = False
+                break
+        self.chart_note.configure(
+            text=self._NOTE_SITES if site_only else self._NOTE_FILES)
+        self.chart_note.grid(row=1, column=0, sticky="w", pady=(0, 4))
 
     # -- canvas drawing ---------------------------------------------------
+
+    def _chart_rows(self) -> list[dict]:
+        """Flatten apps (and the files of expanded ones) into drawable rows."""
+        rows: list[dict] = []
+        for app in self._data_apps:
+            key = app["app"]
+            rows.append({
+                "kind": "app", "key": key, "label": app["app_name"],
+                "seconds": app["seconds"],
+                "pct": (app["seconds"] / self._grand * 100) if self._grand else 0,
+                "color": color_for(key),
+                "has_files": self._has_files(app),
+                "expanded": key in self.expanded,
+            })
+            if key not in self.expanded:
+                continue
+            files = self._data_files.get(key, [])
+            total = app["seconds"] or 1
+            for f in files:
+                rows.append({
+                    "kind": "file", "app": key, "key": f"{key}\x00{f['file']}",
+                    "label": f["file"] or "(no file)",
+                    "seconds": f["seconds"],
+                    "pct": f["seconds"] / total * 100,
+                    # Dimmed shade of the parent's colour keeps the grouping
+                    # obvious without adding a second palette.
+                    "color": _blend(color_for(key), PANEL, 0.45),
+                    "has_files": False, "expanded": False,
+                })
+        return rows
 
     def _draw_chart(self) -> None:
         c = self.chart
         c.delete("all")
-        items = getattr(self, "_chart_items", [])
+        self._rows = []
         w = c.winfo_width()
         h = c.winfo_height()
         if w <= 1 or h <= 1:
             return
-        if not items:
+        rows = self._chart_rows()
+        if not rows:
             c.create_text(w // 2, h // 2, text="No activity in this range",
                           fill=MUTED, font=("Segoe UI", 10))
+            c.configure(scrollregion=(0, 0, w, h))
             return
+
         pad = 12
-        value_w = 68           # right-hand column for the duration
-        gap = 12
-        # Names get half the canvas; the bar track takes what's left, which is
-        # roughly half its old length. Long names wrap instead of being cut.
-        label_w = max(120, (w - 2 * pad) * 0.5)
-        bar_x0 = pad + label_w + gap
-        bar_right = w - pad - value_w
-        bar_max = max(16, bar_right - bar_x0)
-        maxv = max(v for _, v in items) or 1
+        pct_w, time_w, gap = 46, 74, 12
+        name_w = max(130, (w - 2 * pad - pct_w - time_w - gap) * 0.42)
+        bar_x0 = pad + name_w + gap
+        bar_right = w - pad - pct_w - time_w
+        bar_max = max(16, bar_right - bar_x0 - gap)
+        maxv = max((r["seconds"] for r in rows if r["kind"] == "app"), default=0) or 1
 
         font = ("Segoe UI", 9)
-        min_row, vpad = 24, 10
+        min_row, vpad = 26, 10
         y = pad
-        for i, (label, val) in enumerate(items):
-            # Measure the wrapped label first so the row can grow to fit it.
+        for row in rows:
+            is_file = row["kind"] == "file"
+            indent = 18 if is_file else 0
+            marker = ""
+            if row["has_files"]:
+                marker = "▾ " if row["expanded"] else "▸ "
+            label = marker + row["label"]
+            # Measure the wrapped name first so the row can grow to fit it.
             # Wrap a little narrower than the column: Tk overshoots slightly
-            # when it has to break a long unbroken token (a path, say).
-            text_id = c.create_text(pad, y, text=label, fill=FG, anchor="nw",
-                                    width=max(40, label_w - 10), font=font)
+            # when breaking a long unbroken token (a path, say).
+            text_id = c.create_text(
+                pad + indent, y, text=label, anchor="nw",
+                fill=MUTED if is_file else FG,
+                width=max(40, name_w - indent - 10), font=font)
             x0, y0, x1, y1 = c.bbox(text_id)
             row_h = max(min_row, (y1 - y0) + vpad)
-            if y + row_h > h - 2 and i > 0:
-                # Out of room — drop this row and say how many were hidden.
-                c.delete(text_id)
-                left = len(items) - i
-                c.create_text(pad, min(y + 6, h - 12), anchor="nw",
-                              text=f"+{left} more", fill=MUTED, font=("Segoe UI", 8))
-                break
-            # Centre the label vertically within its row.
-            c.move(text_id, 0, (row_h - (y1 - y0)) / 2)
+
+            if self._hover == row.get("key") and not is_file:
+                c.create_rectangle(2, y, w - 2, y + row_h, fill=ROW_HOVER, outline="")
+                c.tag_raise(text_id)
+            c.move(text_id, 0, (row_h - (y1 - y0)) / 2)   # centre in the row
+
             mid = y + row_h / 2
-            bw = max(2, bar_max * (val / maxv))
-            bar_h = min(14, row_h * 0.5)
+            bw = max(2, bar_max * (row["seconds"] / maxv))
+            bar_h = min(13, row_h * 0.46)
             c.create_rectangle(bar_x0, mid - bar_h / 2, bar_x0 + bw, mid + bar_h / 2,
-                               fill=BAR_COLORS[i % len(BAR_COLORS)], outline="")
-            c.create_text(w - pad, mid, text=fmt_duration(val), fill=MUTED,
-                          anchor="e", font=font)
+                               fill=row["color"], outline="")
+            c.create_text(w - pad - pct_w, mid, text=fmt_duration(row["seconds"]),
+                          fill=FG if not is_file else MUTED, anchor="e", font=font)
+            c.create_text(w - pad, mid, text=f"{row['pct']:.0f}%",
+                          fill=MUTED, anchor="e", font=font)
+
+            row["y0"], row["y1"] = y, y + row_h
+            self._rows.append(row)
             y += row_h
+
+        c.configure(scrollregion=(0, 0, w, max(y + pad, h)))
 
     _MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
