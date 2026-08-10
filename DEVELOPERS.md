@@ -111,6 +111,12 @@ behind small backends in `sysinfo.py` / `autostart.py`:
 | Focus + idle | built-in (Win32) | `pyobjc` (Quartz/AppKit) | `python-xlib` + `libXss` |
 | Autostart | Registry Run key | LaunchAgent plist | `~/.config/autostart` |
 
+`autostart.ensure(enabled)` runs at startup and is the only thing `main` should
+call: it verifies the login item both *exists* and still points at the running
+executable, rewriting it when stale. Checking existence alone isn't enough —
+moving or renaming the program otherwise leaves an entry that launches nothing
+and never self-heals.
+
 * **Windows** is the primary, fully-tested platform.
 * **macOS:** `requirements.txt` installs `pyobjc`. Reading the open **file name**
   from a window needs Screen Recording permission; without it, time still counts

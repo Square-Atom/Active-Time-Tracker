@@ -53,19 +53,27 @@ def _win_set(enabled: bool) -> None:
         winreg.CloseKey(key)
 
 
-def _win_is_enabled() -> bool:
+def _win_stored_command() -> str | None:
+    """The command currently registered, or None if there's no entry."""
     import winreg
     try:
         key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, _WIN_RUN_KEY, 0, winreg.KEY_READ)
     except FileNotFoundError:
-        return False
+        return None
     try:
-        winreg.QueryValueEx(key, APP_ID)
-        return True
+        return winreg.QueryValueEx(key, APP_ID)[0]
     except FileNotFoundError:
-        return False
+        return None
     finally:
         winreg.CloseKey(key)
+
+
+def _win_is_enabled() -> bool:
+    return _win_stored_command() is not None
+
+
+def _win_matches_current() -> bool:
+    return _win_stored_command() == _win_command()
 
 
 def _win_cleanup_legacy() -> None:
@@ -87,15 +95,9 @@ def _mac_plist_path() -> str:
     return os.path.expanduser(f"~/Library/LaunchAgents/com.{APP_ID.lower()}.plist")
 
 
-def _mac_set(enabled: bool) -> None:
-    path = _mac_plist_path()
-    if not enabled:
-        if os.path.exists(path):
-            os.remove(path)
-        return
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+def _mac_plist() -> str:
     args = "".join(f"\n        <string>{a}</string>" for a in _launch_args())
-    plist = f"""<?xml version="1.0" encoding="UTF-8"?>
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -107,12 +109,18 @@ def _mac_set(enabled: bool) -> None:
 </dict>
 </plist>
 """
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(plist)
+
+
+def _mac_set(enabled: bool) -> None:
+    _write_or_remove(_mac_plist_path(), _mac_plist() if enabled else None)
 
 
 def _mac_is_enabled() -> bool:
     return os.path.exists(_mac_plist_path())
+
+
+def _mac_matches_current() -> bool:
+    return _file_has(_mac_plist_path(), _mac_plist())
 
 
 # ---------------------------------------------------------------- Linux
@@ -121,15 +129,9 @@ def _linux_desktop_path() -> str:
     return os.path.join(base, "autostart", f"{APP_ID.lower()}.desktop")
 
 
-def _linux_set(enabled: bool) -> None:
-    path = _linux_desktop_path()
-    if not enabled:
-        if os.path.exists(path):
-            os.remove(path)
-        return
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+def _linux_desktop_entry() -> str:
     exec_line = " ".join(_quote(a) for a in _launch_args())
-    content = (
+    return (
         "[Desktop Entry]\n"
         "Type=Application\n"
         "Name=Active Time Tracker\n"
@@ -137,12 +139,38 @@ def _linux_set(enabled: bool) -> None:
         "X-GNOME-Autostart-enabled=true\n"
         "Terminal=false\n"
     )
-    with open(path, "w", encoding="utf-8") as fh:
-        fh.write(content)
+
+
+def _linux_set(enabled: bool) -> None:
+    _write_or_remove(_linux_desktop_path(),
+                     _linux_desktop_entry() if enabled else None)
 
 
 def _linux_is_enabled() -> bool:
     return os.path.exists(_linux_desktop_path())
+
+
+def _linux_matches_current() -> bool:
+    return _file_has(_linux_desktop_path(), _linux_desktop_entry())
+
+
+# ------------------------------------------------------- file helpers
+def _write_or_remove(path: str, content: str | None) -> None:
+    if content is None:
+        if os.path.exists(path):
+            os.remove(path)
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(content)
+
+
+def _file_has(path: str, content: str) -> bool:
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return fh.read() == content
+    except OSError:
+        return False
 
 
 # ---------------------------------------------------------------- dispatch
@@ -156,11 +184,39 @@ def set_enabled(enabled: bool) -> None:
 
 
 def is_enabled() -> bool:
+    """Whether a login item exists — not whether it still points at us."""
     if sys.platform == "win32":
         return _win_is_enabled()
     if sys.platform == "darwin":
         return _mac_is_enabled()
     return _linux_is_enabled()
+
+
+def matches_current() -> bool:
+    """Whether the login item launches *this* executable, from this location."""
+    if sys.platform == "win32":
+        return _win_matches_current()
+    if sys.platform == "darwin":
+        return _mac_matches_current()
+    return _linux_matches_current()
+
+
+def ensure(enabled: bool) -> bool:
+    """Make the login item agree with `enabled` and point at this executable.
+
+    Checking only that an entry *exists* isn't enough: renaming, moving or
+    replacing the executable leaves a stale entry behind that silently launches
+    nothing, and it would never be repaired. Returns True if anything changed.
+    """
+    if enabled:
+        if matches_current():
+            return False
+        set_enabled(True)
+        return True
+    if is_enabled():
+        set_enabled(False)
+        return True
+    return False
 
 
 def cleanup_legacy() -> None:

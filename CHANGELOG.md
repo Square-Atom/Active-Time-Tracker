@@ -26,6 +26,12 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
   an expand arrow start at the same place.
 
 ### Fixed
+- **Start-with-system could silently stop working.** The login entry was only
+  checked for existence, never for whether it still pointed at the app — so
+  moving, renaming or replacing the program left an entry launching a file that
+  no longer existed, and nothing ever repaired it. The entry is now verified on
+  every launch and rewritten when it's stale (which also fixes it for anyone
+  already affected).
 - Filenames containing a hyphen were truncated at the last hyphen —
   `clockwork-workshop.pyxel` was recorded as `workshop.pyxel`. Dashes now only
   separate the app name from the filename when surrounded by spaces.

@@ -91,11 +91,13 @@ def main() -> None:
     storage = Storage()
     tracker = Tracker(storage, cfg)
 
-    # Keep the login-item entry in sync with the saved preference.
+    # Keep the login item in sync with the saved preference — and pointing at
+    # wherever this executable now lives, so moving or renaming it doesn't
+    # silently stop the app launching at login.
     try:
         autostart.cleanup_legacy()
-        if cfg.autostart != autostart.is_enabled():
-            autostart.set_enabled(cfg.autostart)
+        if autostart.ensure(cfg.autostart):
+            logging.info("Autostart entry updated (enabled=%s)", cfg.autostart)
     except OSError:
         logging.exception("Failed to sync autostart setting")
 
