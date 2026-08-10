@@ -57,6 +57,23 @@ def test_custom_range_pages_by_its_own_length():
     assert r.bounds() == ("2026-08-01", "2026-08-10")
 
 
+def test_labels_omit_the_year_within_the_current_year():
+    """Keeps the header narrow enough for the nav arrows to survive."""
+    year = dt.date.today().year
+    r = RangeState(); r.mode = "custom"
+    r.custom_start = dt.date(year, 8, 1)
+    r.custom_end = dt.date(year, 8, 10)
+    assert r.label() == "Aug 01 – Aug 10"
+    assert str(year) not in r.label()
+
+
+def test_labels_keep_the_year_for_other_years():
+    r = RangeState(); r.mode = "custom"
+    r.custom_start = dt.date(2019, 8, 1)
+    r.custom_end = dt.date(2019, 8, 10)
+    assert "2019" in r.label()
+
+
 def test_single_day_custom_range_is_not_multiday():
     r = RangeState(); r.mode = "custom"
     r.custom_start = r.custom_end = dt.date(2026, 8, 5)
@@ -126,6 +143,31 @@ def _drawn(dash, tk_root, w=560, h=400):
     _pin_canvas(dash.chart, w, h)
     dash._draw_chart()
     tk_root.update_idletasks()
+
+
+def test_header_fits_the_smallest_allowed_window(dash, tk_root):
+    """Regression: the range arrows are the only way to move between days, and
+    they used to be pushed off-screen when the window was narrowed."""
+    dash.range.mode = "custom"                       # the widest label form
+    dash.range.custom_start = dt.date(dt.date.today().year, 8, 1)
+    dash.range.custom_end = dt.date(dt.date.today().year, 8, 10)
+    dash.refresh()
+    tk_root.update_idletasks()
+
+    header = dash.range_label.master.master
+    needed = sum(header.grid_slaves(row=0, column=c)[0].winfo_reqwidth()
+                 for c in range(3)) + 18            # inter-column padding
+    min_width = int(tk_root.minsize()[0])
+    assert needed + 32 <= min_width, (              # 32 = window side padding
+        f"header needs {needed + 32}px but the window can shrink to {min_width}px")
+
+
+def test_nav_arrows_keep_their_size_when_the_header_is_squeezed(dash, tk_root):
+    """Only the presets column has grid weight, so it absorbs the squeeze."""
+    header = dash.range_label.master.master
+    assert header.grid_columnconfigure(0)["weight"] == 1
+    for col in (1, 2):
+        assert header.grid_columnconfigure(col)["weight"] == 0
 
 
 # --- stable colours --------------------------------------------------------

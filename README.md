@@ -31,8 +31,8 @@ also launches automatically when you log in — you can turn that off in Setting
 
 Click the tray icon to open the dashboard.
 
-* **Pick a period** — Today, This Week, This Month, This Year, or a **Custom
-  Range**. Use ◀ ▶ to step to the previous/next period.
+* **Pick a period** — Today, Week, Month, Year, or a **Custom** range. Use ◀ ▶
+  to step to the previous/next period.
 * **See your apps** — one row each, showing name, bar, time and share of the
   day. **Click a row** to expand it into the files you worked on; click again to
   collapse. Each app keeps its own colour, so it looks the same day to day.

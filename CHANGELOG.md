@@ -26,6 +26,13 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
   an expand arrow start at the same place.
 
 ### Fixed
+- **The date arrows disappeared when the window was narrowed.** They were the
+  first thing dropped when the header ran out of room, even though they're the
+  only way to move between days. The header now protects them, and takes less
+  space: Settings and App groups are icon buttons (with tooltips — both are
+  also on the tray menu), the range presets are labelled *Today / Week / Month
+  / Year / Custom*, and the date label drops the year when you're in the
+  current one. It now fits the smallest allowed window with room to spare.
 - **Start-with-system could silently stop working.** The login entry was only
   checked for existence, never for whether it still pointed at the app — so
   moving, renaming or replacing the program left an entry launching a file that

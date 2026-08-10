@@ -60,6 +60,45 @@ def _blend(color: str, other: str, amount: float) -> str:
     return "#%02x%02x%02x" % tuple(mixed)
 
 
+class Tooltip:
+    """A small hover label — icon-only buttons need to say what they do."""
+
+    def __init__(self, widget, text: str, delay: int = 450):
+        self.widget, self.text, self.delay = widget, text, delay
+        self._after = None
+        self._tip = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+
+    def _schedule(self, _event=None):
+        self._cancel()
+        self._after = self.widget.after(self.delay, self._show)
+
+    def _cancel(self):
+        if self._after:
+            self.widget.after_cancel(self._after)
+            self._after = None
+
+    def _show(self):
+        if self._tip or not self.widget.winfo_viewable():
+            return
+        x = self.widget.winfo_rootx() + self.widget.winfo_width() // 2
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self._tip = tk.Toplevel(self.widget)
+        self._tip.wm_overrideredirect(True)
+        tk.Label(self._tip, text=self.text, bg="#f6f6fa", fg="#1e1f2b",
+                 font=("Segoe UI", 8), padx=6, pady=2).pack()
+        self._tip.update_idletasks()
+        self._tip.wm_geometry(f"+{x - self._tip.winfo_width() // 2}+{y}")
+
+    def _hide(self, _event=None):
+        self._cancel()
+        if self._tip:
+            self._tip.destroy()
+            self._tip = None
+
+
 def fmt_duration(seconds: float) -> str:
     s = int(round(seconds))
     h, rem = divmod(s, 3600)
@@ -115,6 +154,18 @@ class RangeState:
             return self.custom_start != self.custom_end
         return self.mode in ("week", "month", "year")
 
+    @staticmethod
+    def _day_label(d: dt.date) -> str:
+        """'Aug 10', or 'Aug 10, 2025' outside the current year.
+
+        The year is redundant most of the time, and dropping it keeps the
+        header narrow enough for the navigation arrows to survive a small
+        window.
+        """
+        if d.year == dt.date.today().year:
+            return d.strftime("%b %d")
+        return d.strftime("%b %d, %Y")
+
     def label(self) -> str:
         today = dt.date.today()
         if self.mode == "day":
@@ -122,21 +173,18 @@ class RangeState:
                 return "Today"
             if self.anchor == today - dt.timedelta(days=1):
                 return "Yesterday"
+            if self.anchor.year == today.year:
+                return self.anchor.strftime("%a, %b %d")
             return self.anchor.strftime("%a, %b %d, %Y")
-        if self.mode == "week":
-            s, e = self.bounds()
-            sd = dt.date.fromisoformat(s)
-            ed = dt.date.fromisoformat(e)
-            return f"{sd.strftime('%b %d')} – {ed.strftime('%b %d, %Y')}"
         if self.mode == "year":
             return self.anchor.strftime("%Y")
-        if self.mode == "custom":
+        if self.mode in ("week", "custom"):
             s, e = self.bounds()
             sd = dt.date.fromisoformat(s)
             ed = dt.date.fromisoformat(e)
             if sd == ed:
-                return sd.strftime("%b %d, %Y")
-            return f"{sd.strftime('%b %d, %Y')} – {ed.strftime('%b %d, %Y')}"
+                return self._day_label(sd)
+            return f"{self._day_label(sd)} – {self._day_label(ed)}"
         return self.anchor.strftime("%B %Y")
 
     def shift(self, direction: int) -> None:
@@ -217,6 +265,8 @@ class Dashboard:
                         focuscolor=PANEL, padding=(10, 4))
         style.map("TButton", background=[("active", "#34364a")])
         style.configure("Seg.TButton", padding=(14, 5))
+        style.configure("Icon.TButton", padding=(4, 4), font=("Segoe UI", 11),
+                        anchor="center")
         style.configure("Active.Seg.TButton", background=ACCENT, foreground="#12131c")
         style.map("Active.Seg.TButton", background=[("active", ACCENT)])
         style.configure("Treeview", background=PANEL, fieldbackground=PANEL,
@@ -227,32 +277,53 @@ class Dashboard:
                   foreground=[("selected", "#12131c")])
 
         # --- header -----------------------------------------------------
+        # Laid out with grid, not pack: the range arrows are the only way to
+        # move between days, so they must never be the thing that gets pushed
+        # off when the window narrows. Only the preset column absorbs the
+        # squeeze; everything else keeps its natural width.
         header = ttk.Frame(self.root)
         header.pack(fill="x", padx=16, pady=(14, 6))
+        header.columnconfigure(0, weight=1)
 
         seg = ttk.Frame(header)
-        seg.pack(side="left")
+        seg.grid(row=0, column=0, sticky="w")
         self.seg_buttons = {}
-        for mode, text in (("day", "Today"), ("week", "This Week"),
-                           ("month", "This Month"), ("year", "This Year"),
-                           ("custom", "Custom Range")):
+        for mode, text in (("day", "Today"), ("week", "Week"),
+                           ("month", "Month"), ("year", "Year"),
+                           ("custom", "Custom")):
             cmd = self._open_custom_range if mode == "custom" \
                 else (lambda m=mode: self._set_mode(m))
-            b = ttk.Button(seg, text=text, style="Seg.TButton", command=cmd)
+            # ttk gives buttons a generous default minimum width, which the
+            # short labels don't need — size them to their text instead.
+            b = ttk.Button(seg, text=text, style="Seg.TButton", command=cmd,
+                           width=len(text) + 1)
             b.pack(side="left", padx=(0, 6))
             self.seg_buttons[mode] = b
 
-        ttk.Button(header, text="⚙ Settings", command=self._open_settings).pack(
-            side="right", padx=(8, 0))
-        ttk.Button(header, text="🔀 Groups", command=self._open_merges).pack(
-            side="right", padx=(8, 0))
-
         nav = ttk.Frame(header)
-        nav.pack(side="right")
+        nav.grid(row=0, column=1, sticky="e", padx=(8, 0))
         ttk.Button(nav, text="◀", width=3, command=lambda: self._nav(-1)).pack(side="left")
-        self.range_label = ttk.Label(nav, text="", style="H.TLabel", width=24, anchor="center")
-        self.range_label.pack(side="left", padx=8)
+        # Fixed width so the arrows don't shuffle as the label text changes;
+        # 16 fits the longest form ("Aug 01 – Aug 10").
+        self.range_label = ttk.Label(nav, text="", style="H.TLabel", width=16,
+                                     anchor="center")
+        self.range_label.pack(side="left", padx=6)
         ttk.Button(nav, text="▶", width=3, command=lambda: self._nav(1)).pack(side="left")
+
+        # Icon-only: both windows are also on the tray menu, so the labels were
+        # costing header width for little gain.
+        actions = ttk.Frame(header)
+        actions.grid(row=0, column=2, sticky="e", padx=(10, 0))
+        # Plain geometric glyphs, not emoji: emoji fall back to a boxed
+        # placeholder in the UI font on Windows.
+        groups_btn = ttk.Button(actions, text="⧉", width=3, style="Icon.TButton",
+                                command=self._open_merges)
+        groups_btn.pack(side="left", padx=(0, 4))
+        settings_btn = ttk.Button(actions, text="⚙", width=3, style="Icon.TButton",
+                                  command=self._open_settings)
+        settings_btn.pack(side="left")
+        Tooltip(groups_btn, "App groups")
+        Tooltip(settings_btn, "Settings")
 
         totalrow = ttk.Frame(self.root)
         totalrow.pack(fill="x", padx=16, pady=(0, 8))
