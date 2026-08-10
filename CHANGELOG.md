@@ -15,6 +15,17 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
   show an odd label. Turn it off per browser with right-click → *Track files for
   this app*.
 
+### Changed
+- **Chart names are shown in full** and wrap onto extra lines instead of being
+  cut short. Names now get half the chart width and the bars are about half
+  their previous length. When rows don't all fit, a "+N more" marker says how
+  many are hidden.
+
+### Fixed
+- The taskbar button showed Python's icon when running from source. The app now
+  claims its own Windows AppUserModelID and sets a real `.ico`, so the clock
+  icon appears in the title bar and taskbar.
+
 ## [1.1.0] — 2026-08-09
 
 ### Added

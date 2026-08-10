@@ -28,6 +28,34 @@ def save_ico(path: str) -> None:
     base.save(path, format="ICO", sizes=sizes)
 
 
+def ensure_ico() -> str | None:
+    """Path to an .ico on disk, generating one in the data dir if needed.
+
+    Windows needs a real .ico file (not a Tk photo image) before it will show
+    our icon in the title bar and taskbar. Returns None if it can't be written —
+    the icon is cosmetic, so callers should carry on.
+    """
+    import os
+    import sys
+
+    # A packaged build ships one next to the executable; prefer that.
+    if getattr(sys, "frozen", False):
+        bundled = os.path.join(getattr(sys, "_MEIPASS", ""), "app.ico")
+        if os.path.exists(bundled):
+            return bundled
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.ico")
+    if os.path.exists(here):
+        return here
+    try:
+        import config
+        path = os.path.join(config.APP_DIR, "app.ico")
+        if not os.path.exists(path):
+            save_ico(path)
+        return path
+    except Exception:
+        return None
+
+
 if __name__ == "__main__":
     import os
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app.ico")

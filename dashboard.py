@@ -28,26 +28,6 @@ BAR_COLORS = [
 ]
 
 
-def _elide_label(label: str, limit: int = 30) -> str:
-    """Shorten a chart label, keeping the end (filename) and cutting paths on a
-    folder boundary so the result stays readable."""
-    if len(label) <= limit:
-        return label
-    # Prefer eliding whole path components: …/parent/file.ext
-    parts = label.replace("\\", "/").split("/")
-    if len(parts) > 1:
-        tail = parts[-1]
-        for i in range(len(parts) - 2, 0, -1):
-            candidate = "/".join(parts[i:])
-            if len(candidate) + 1 > limit:
-                break
-            tail = candidate
-        if len(tail) + 1 <= limit:
-            return "…/" + tail
-        return "…" + tail[-(limit - 1):]
-    return "…" + label[-(limit - 1):]
-
-
 def fmt_duration(seconds: float) -> str:
     s = int(round(seconds))
     h, rem = divmod(s, 3600)
@@ -616,21 +596,44 @@ class Dashboard:
                           fill=MUTED, font=("Segoe UI", 10))
             return
         pad = 12
-        row_h = min(34, (h - pad) / len(items))
+        value_w = 68           # right-hand column for the duration
+        gap = 12
+        # Names get half the canvas; the bar track takes what's left, which is
+        # roughly half its old length. Long names wrap instead of being cut.
+        label_w = max(120, (w - 2 * pad) * 0.5)
+        bar_x0 = pad + label_w + gap
+        bar_right = w - pad - value_w
+        bar_max = max(16, bar_right - bar_x0)
         maxv = max(v for _, v in items) or 1
-        label_w = 150
-        bar_x0 = pad + label_w
-        bar_max = w - bar_x0 - 70
+
+        font = ("Segoe UI", 9)
+        min_row, vpad = 24, 10
+        y = pad
         for i, (label, val) in enumerate(items):
-            y = pad + i * row_h + row_h / 2
-            color = BAR_COLORS[i % len(BAR_COLORS)]
-            text = _elide_label(label)
-            c.create_text(pad, y, text=text, fill=FG, anchor="w", font=("Segoe UI", 9))
+            # Measure the wrapped label first so the row can grow to fit it.
+            # Wrap a little narrower than the column: Tk overshoots slightly
+            # when it has to break a long unbroken token (a path, say).
+            text_id = c.create_text(pad, y, text=label, fill=FG, anchor="nw",
+                                    width=max(40, label_w - 10), font=font)
+            x0, y0, x1, y1 = c.bbox(text_id)
+            row_h = max(min_row, (y1 - y0) + vpad)
+            if y + row_h > h - 2 and i > 0:
+                # Out of room — drop this row and say how many were hidden.
+                c.delete(text_id)
+                left = len(items) - i
+                c.create_text(pad, min(y + 6, h - 12), anchor="nw",
+                              text=f"+{left} more", fill=MUTED, font=("Segoe UI", 8))
+                break
+            # Centre the label vertically within its row.
+            c.move(text_id, 0, (row_h - (y1 - y0)) / 2)
+            mid = y + row_h / 2
             bw = max(2, bar_max * (val / maxv))
-            c.create_rectangle(bar_x0, y - row_h * 0.28, bar_x0 + bw, y + row_h * 0.28,
-                               fill=color, outline="")
-            c.create_text(bar_x0 + bw + 6, y, text=fmt_duration(val), fill=MUTED,
-                          anchor="w", font=("Segoe UI", 9))
+            bar_h = min(14, row_h * 0.5)
+            c.create_rectangle(bar_x0, mid - bar_h / 2, bar_x0 + bw, mid + bar_h / 2,
+                               fill=BAR_COLORS[i % len(BAR_COLORS)], outline="")
+            c.create_text(w - pad, mid, text=fmt_duration(val), fill=MUTED,
+                          anchor="e", font=font)
+            y += row_h
 
     _MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]

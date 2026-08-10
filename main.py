@@ -11,6 +11,7 @@ Usage:
 
 from __future__ import annotations
 
+import ctypes
 import logging
 import os
 import sys
@@ -19,6 +20,7 @@ import tkinter as tk
 import pystray
 from PIL import ImageTk
 
+import appicon
 import autostart
 import config
 import sysinfo
@@ -42,12 +44,47 @@ logging.basicConfig(
 )
 
 
+def _claim_taskbar_identity() -> None:
+    """Stop Windows filing our window under pythonw.exe.
+
+    The taskbar groups by AppUserModelID; without our own, the button inherits
+    the host interpreter's identity and its icon. Must run before any window is
+    created.
+    """
+    if sys.platform != "win32":
+        return
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            f"PixelmancerStudio.{APP_ID}")
+    except Exception:
+        logging.debug("Could not set AppUserModelID", exc_info=True)
+
+
+def _set_window_icon(root) -> None:
+    """Give the window (and taskbar button) our clock icon.
+
+    Windows needs a real .ico via `iconbitmap`; `iconphoto` alone doesn't reach
+    the taskbar.
+    """
+    ico = appicon.ensure_ico()
+    if ico:
+        try:
+            root.iconbitmap(default=ico)
+            return
+        except tk.TclError:
+            logging.debug("iconbitmap failed; falling back to iconphoto", exc_info=True)
+    # Non-Windows (or no .ico): a Tk photo image still sets the window icon.
+    root._app_icon = ImageTk.PhotoImage(appicon.make_clock_image(64))
+    root.iconphoto(True, root._app_icon)
+
+
 def main() -> None:
     if not sysinfo.single_instance(APP_ID):
         logging.info("Another instance is already running; exiting.")
         return
 
     start_hidden = "--minimized" in sys.argv
+    _claim_taskbar_identity()  # before any window exists
 
     cfg = config.load()
     storage = Storage()
@@ -62,10 +99,7 @@ def main() -> None:
         logging.exception("Failed to sync autostart setting")
 
     root = tk.Tk()
-    # Window / taskbar icon — the same clock as the tray. Keep a reference on
-    # root so it isn't garbage-collected; default=True applies to dialogs too.
-    root._app_icon = ImageTk.PhotoImage(make_clock_image(64))
-    root.iconphoto(True, root._app_icon)
+    _set_window_icon(root)  # same clock as the tray, incl. the taskbar button
     dashboard = Dashboard(root, storage, tracker)
     root.protocol("WM_DELETE_WINDOW", dashboard.hide)  # X hides to tray
 
