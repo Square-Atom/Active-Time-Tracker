@@ -70,17 +70,19 @@ GitHub Release.
 **Release checklist:**
 
 1. Bump `APP_VERSION` in `config.py` to the new version (no `v` prefix).
-2. Add a section for it in [CHANGELOG.md](CHANGELOG.md).
-3. Commit both (CI runs the tests on push).
-4. Tag and push:
+2. Promote the *Unreleased* section in [CHANGELOG.md](CHANGELOG.md) to the new
+   version with today's date, and add its link at the bottom.
+3. Commit both, then run the tests (`python -m pytest`) — CI runs them on push
+   too, and the build won't publish if they fail.
+4. Tag and push (substituting the real version):
 
 ```bash
-git tag -a v1.1.0 -m "Active Time Tracker v1.1.0"
+git tag -a vX.Y.Z -m "Active Time Tracker vX.Y.Z"
 git push origin main --follow-tags
 ```
 
-Steps 1–2 matter: the update check compares the GitHub tag against
-`APP_VERSION`, so a stale constant tells every user an update is available.
+Step 1 matters: the update check compares the GitHub tag against `APP_VERSION`,
+so a stale constant tells every user an update is available.
 
 The workflow runs on the tag and produces `ActiveTimeTracker-windows.exe`,
 `ActiveTimeTracker-macos.zip`, and `ActiveTimeTracker-linux`, uploading them to
