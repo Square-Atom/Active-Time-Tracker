@@ -5,6 +5,12 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
 
 ## [Unreleased]
 
+### Added
+- **Pick a bar colour per app.** Right-click a row → **Bar colour…** and choose
+  from a palette, or **Custom…** for an exact shade — so Photoshop can be blue
+  and Pyxel Edit red. Choices are saved; **Reset** restores the automatic
+  colour. Files follow a dimmed shade of their app's colour.
+
 ### Changed
 - **The home screen is now a single chart.** The separate applications table is
   gone; every application is one row showing **name · bar · time · percent**.
@@ -16,6 +22,8 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
   app changed colour whenever the ranking shifted. They're now derived from the
   app's name and stay put from day to day; files use a dimmed shade of their
   app's colour.
+- Application names line up in a column of their own, so rows with and without
+  an expand arrow start at the same place.
 
 ### Fixed
 - Filenames containing a hyphen were truncated at the last hyphen —

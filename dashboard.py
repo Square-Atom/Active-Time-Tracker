@@ -28,6 +28,17 @@ BAR_COLORS = [
     "#82d8ff", "#f78c6c", "#a6e22e", "#ff9de2", "#8fd6a9",
 ]
 ROW_HOVER = "#31324a"
+MARKER_W = 16    # expander column, so names line up whether or not one is shown
+FILE_INDENT = 18
+
+# Offered when picking a bar colour by hand — a wider spread than BAR_COLORS so
+# there's a sensible blue/red/orange for apps with a known brand colour.
+PICKER_COLORS = [
+    "#7c9cff", "#4d7cff", "#82d8ff", "#7ce0c3",
+    "#8fd6a9", "#a6e22e", "#ffcb6b", "#f7a05c",
+    "#f78c6c", "#ff7043", "#ff8b94", "#ef5350",
+    "#ff9de2", "#c792ea", "#9a8cff", "#9a9ab0",
+]
 
 
 def color_for(key: str) -> str:
@@ -498,6 +509,10 @@ class Dashboard:
         menu.add_checkbutton(label="Track files for this app",
                              variable=self._ctx_track_var,
                              command=lambda: self._ctx_toggle_track(members))
+        menu.add_command(label="Bar colour…",
+                         command=lambda: self._open_color_picker(key, name,
+                                                                 event.x_root,
+                                                                 event.y_root))
         menu.add_separator()
         menu.add_command(label=f'Add "{name}" to ignore list',
                          command=lambda: self._ctx_ignore(members))
@@ -505,6 +520,71 @@ class Dashboard:
             menu.tk_popup(event.x_root, event.y_root)
         finally:
             menu.grab_release()
+
+    # -- bar colour -------------------------------------------------------
+
+    def _set_app_color(self, key: str, color: str | None) -> None:
+        """Store (or clear, when `color` is None) a hand-picked bar colour."""
+        cfg = self.tracker.cfg
+        if color:
+            cfg.app_colors[key] = color
+        else:
+            cfg.app_colors.pop(key, None)
+        cfg.save()
+        self.refresh()
+
+    def _open_color_picker(self, key: str, name: str, x: int, y: int) -> None:
+        """A small swatch grid — lighter than a full colour dialog for the
+        common case, with the system picker behind 'Custom…' for exact shades."""
+        current = self._color_for(key)
+        win = tk.Toplevel(self.root)
+        win.title(f"Bar colour — {name}")
+        win.configure(bg=BG)
+        win.resizable(False, False)
+        win.transient(self.root)
+
+        wrap = tk.Frame(win, bg=BG)
+        wrap.pack(padx=14, pady=12)
+        tk.Label(wrap, text=name, bg=BG, fg=FG,
+                 font=("Segoe UI Semibold", 10)).grid(
+            row=0, column=0, columnspan=8, sticky="w", pady=(0, 8))
+
+        def choose(color):
+            win.destroy()
+            self._set_app_color(key, color)
+
+        for i, color in enumerate(PICKER_COLORS):
+            selected = color.lower() == current.lower()
+            cell = tk.Frame(wrap, bg=ACCENT if selected else BG,
+                            padx=2, pady=2)
+            cell.grid(row=1 + i // 8, column=i % 8, padx=3, pady=3)
+            sw = tk.Frame(cell, bg=color, width=26, height=22, cursor="hand2")
+            sw.pack()
+            sw.bind("<Button-1>", lambda e, c=color: choose(c))
+
+        def custom():
+            from tkinter import colorchooser
+            picked = colorchooser.askcolor(color=current, parent=win,
+                                           title=f"Bar colour — {name}")[1]
+            if picked:
+                choose(picked)
+
+        btns = tk.Frame(wrap, bg=BG)
+        btns.grid(row=3, column=0, columnspan=8, sticky="ew", pady=(10, 0))
+        tk.Button(btns, text="Custom…", command=custom, bg=PANEL, fg=FG,
+                  relief="flat", padx=10, pady=3, cursor="hand2").pack(side="left")
+        tk.Button(btns, text="Reset", command=lambda: choose(None), bg=PANEL,
+                  fg=FG, relief="flat", padx=10, pady=3,
+                  cursor="hand2").pack(side="left", padx=(6, 0))
+        tk.Button(btns, text="Cancel", command=win.destroy, bg=PANEL, fg=FG,
+                  relief="flat", padx=10, pady=3,
+                  cursor="hand2").pack(side="right")
+
+        win.bind("<Escape>", lambda e: win.destroy())
+        win.update_idletasks()
+        win.geometry(f"+{max(0, x - 40)}+{max(0, y - 20)}")
+        win.grab_set()
+        win.focus_force()
 
     def _ctx_toggle_track(self, members: list[str]) -> None:
         cfg = self.tracker.cfg
@@ -614,6 +694,15 @@ class Dashboard:
 
     # -- canvas drawing ---------------------------------------------------
 
+    def _color_for(self, key: str) -> str:
+        """A hand-picked colour if the user chose one, else the stable default."""
+        cfg = self.tracker.cfg if self.tracker else None
+        if cfg:
+            chosen = cfg.app_colors.get(key)
+            if chosen:
+                return chosen
+        return color_for(key)
+
     def _chart_rows(self) -> list[dict]:
         """Flatten apps (and the files of expanded ones) into drawable rows."""
         rows: list[dict] = []
@@ -623,7 +712,7 @@ class Dashboard:
                 "kind": "app", "key": key, "label": app["app_name"],
                 "seconds": app["seconds"],
                 "pct": (app["seconds"] / self._grand * 100) if self._grand else 0,
-                "color": color_for(key),
+                "color": self._color_for(key),
                 "has_files": self._has_files(app),
                 "expanded": key in self.expanded,
             })
@@ -639,7 +728,7 @@ class Dashboard:
                     "pct": f["seconds"] / total * 100,
                     # Dimmed shade of the parent's colour keeps the grouping
                     # obvious without adding a second palette.
-                    "color": _blend(color_for(key), PANEL, 0.45),
+                    "color": _blend(self._color_for(key), PANEL, 0.45),
                     "has_files": False, "expanded": False,
                 })
         return rows
@@ -672,18 +761,17 @@ class Dashboard:
         y = pad
         for row in rows:
             is_file = row["kind"] == "file"
-            indent = 18 if is_file else 0
-            marker = ""
-            if row["has_files"]:
-                marker = "▾ " if row["expanded"] else "▸ "
-            label = marker + row["label"]
+            # The expander gets its own column so every name starts at the same
+            # x, whether or not the row can be expanded.
+            indent = FILE_INDENT if is_file else 0
+            name_x = pad + MARKER_W + indent
             # Measure the wrapped name first so the row can grow to fit it.
             # Wrap a little narrower than the column: Tk overshoots slightly
             # when breaking a long unbroken token (a path, say).
             text_id = c.create_text(
-                pad + indent, y, text=label, anchor="nw",
+                name_x, y, text=row["label"], anchor="nw",
                 fill=MUTED if is_file else FG,
-                width=max(40, name_w - indent - 10), font=font)
+                width=max(40, name_w - MARKER_W - indent - 10), font=font)
             x0, y0, x1, y1 = c.bbox(text_id)
             row_h = max(min_row, (y1 - y0) + vpad)
 
@@ -693,6 +781,9 @@ class Dashboard:
             c.move(text_id, 0, (row_h - (y1 - y0)) / 2)   # centre in the row
 
             mid = y + row_h / 2
+            if row["has_files"]:
+                c.create_text(pad + 3, mid, text="▾" if row["expanded"] else "▸",
+                              fill=MUTED, anchor="w", font=font)
             bw = max(2, bar_max * (row["seconds"] / maxv))
             bar_h = min(13, row_h * 0.46)
             c.create_rectangle(bar_x0, mid - bar_h / 2, bar_x0 + bw, mid + bar_h / 2,

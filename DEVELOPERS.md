@@ -167,9 +167,16 @@ automatically on first launch.
   "check_updates_on_startup": true,
   "backup_enabled": true,
   "backup_dir": "",
-  "backup_keep": 7
+  "backup_keep": 7,
+  "app_colors": {}
 }
 ```
+
+`app_colors` maps an app key (or `merge::<group>`) to a `#rrggbb` bar colour,
+set from the dashboard's right-click menu. Anything not listed gets a stable
+colour derived from its name — `dashboard.color_for()` hashes the name with md5
+rather than `hash()`, which is randomised per process and would change the
+palette on every restart.
 
 Most of this is editable from the app's UI (Settings, Ignored apps, App groups,
 and the right-click menu). Direct editing is for advanced tweaks.

@@ -280,6 +280,9 @@ DEFAULTS = {
     "backup_dir": "",      # "" = <data dir>/backups; set a synced folder for
                            # off-machine safety (OneDrive, Nextcloud, …)
     "backup_keep": 7,
+    # Hand-picked bar colours, app key -> "#rrggbb". Anything not listed gets a
+    # stable colour derived from its name.
+    "app_colors": {},
 }
 
 MERGE_PREFIX = "merge::"  # synthetic app key for a merged group
@@ -298,6 +301,7 @@ class Config:
     backup_enabled: bool = True
     backup_dir: str = ""
     backup_keep: int = 7
+    app_colors: dict[str, str] = field(default_factory=dict)
 
     def save(self) -> None:
         data = {
@@ -312,6 +316,7 @@ class Config:
             "backup_enabled": self.backup_enabled,
             "backup_dir": self.backup_dir,
             "backup_keep": self.backup_keep,
+            "app_colors": self.app_colors,
         }
         tmp = CONFIG_PATH + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
@@ -384,6 +389,7 @@ def load() -> Config:
         backup_enabled=data.get("backup_enabled", True),
         backup_dir=data.get("backup_dir", ""),
         backup_keep=int(data.get("backup_keep", 7) or 7),
+        app_colors=data.get("app_colors", {}),
     )
     return cfg
 

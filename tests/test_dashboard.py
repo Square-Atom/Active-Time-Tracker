@@ -5,7 +5,8 @@ import types
 
 import config
 import pytest
-from dashboard import Dashboard, RangeState, fmt_duration
+from dashboard import (PANEL, Dashboard, RangeState, _blend, color_for,
+                       fmt_duration)
 
 
 # --- pure logic ------------------------------------------------------------
@@ -235,9 +236,94 @@ def test_file_rows_are_indented_and_dimmer_than_their_app(dash, tk_root, store, 
 def test_expand_marker_reflects_state(dash, tk_root, store, today):
     store.add_seconds(today, "code.exe", "VS Code", "main.py", 200)
     dash.refresh(); _drawn(dash, tk_root)
-    assert any(t.startswith("▸") for t in _texts(dash.chart))
+    assert "▸" in _texts(dash.chart)
     _click(dash, "code.exe"); _drawn(dash, tk_root)
-    assert any(t.startswith("▾") for t in _texts(dash.chart))
+    assert "▾" in _texts(dash.chart)
+
+
+def _name_x(canvas, label):
+    item = next(i for i in canvas.find_all()
+                if canvas.type(i) == "text" and canvas.itemcget(i, "text") == label)
+    return canvas.bbox(item)[0]
+
+
+def test_names_line_up_whether_or_not_a_row_expands(dash, tk_root, store, cfg, today):
+    """The expander lives in its own column, so "Chrome" and "File Explorer"
+    start at the same x even though only one of them has a marker."""
+    cfg.set_track_files("explorer.exe", False)          # not expandable
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 300)
+    store.add_seconds(today, "explorer.exe", "File Explorer", "", 100)
+    dash.refresh(); _drawn(dash, tk_root)
+
+    expandable = [r for r in dash._rows if r["has_files"]]
+    plain = [r for r in dash._rows if not r["has_files"]]
+    assert expandable and plain, "need one of each for this to mean anything"
+
+    c = dash.chart
+    assert _name_x(c, "VS Code") == _name_x(c, "File Explorer")
+    # the marker sits to the left of the names, in its own column
+    marker = next(i for i in c.find_all()
+                  if c.type(i) == "text" and c.itemcget(i, "text") in ("▸", "▾"))
+    assert c.bbox(marker)[0] < _name_x(c, "VS Code")
+
+
+# --- custom bar colours ----------------------------------------------------
+
+def test_custom_colour_overrides_the_default(dash, tk_root, store, cfg, today):
+    store.add_seconds(today, "photoshop.exe", "Photoshop", "a.psd", 100)
+    dash.refresh(); _drawn(dash, tk_root)
+    assert dash._rows[0]["color"] == color_for("photoshop.exe")
+
+    dash._set_app_color("photoshop.exe", "#4d7cff")
+    _drawn(dash, tk_root)
+    assert dash._rows[0]["color"] == "#4d7cff"
+    assert cfg.app_colors["photoshop.exe"] == "#4d7cff"
+
+
+def test_custom_colour_survives_a_reload(store, cfg, today, tk_root):
+    """It's stored in config, so a fresh dashboard picks it up."""
+    store.add_seconds(today, "pyxeledit.exe", "Pyxel Edit", "a.pyxel", 100)
+    cfg.app_colors["pyxeledit.exe"] = "#ef5350"
+    tracker = types.SimpleNamespace(cfg=cfg, paused=False, is_active=False,
+                                    current_app_name="", current_file="")
+    fresh = Dashboard(tk_root, store, tracker=tracker)
+    fresh.refresh(); _drawn(fresh, tk_root)
+    assert fresh._rows[0]["color"] == "#ef5350"
+
+
+def test_resetting_a_colour_restores_the_default(dash, tk_root, store, cfg, today):
+    store.add_seconds(today, "claude.exe", "Claude", "", 100)
+    dash._set_app_color("claude.exe", "#f78c6c")
+    _drawn(dash, tk_root)
+    assert dash._rows[0]["color"] == "#f78c6c"
+
+    dash._set_app_color("claude.exe", None)
+    _drawn(dash, tk_root)
+    assert "claude.exe" not in cfg.app_colors
+    assert dash._rows[0]["color"] == color_for("claude.exe")
+
+
+def test_files_follow_their_apps_custom_colour(dash, tk_root, store, cfg, today):
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
+    dash._set_app_color("code.exe", "#ef5350")
+    dash.refresh(); _drawn(dash, tk_root)
+    _click(dash, "code.exe"); _drawn(dash, tk_root)
+
+    app_row, file_row = dash._rows[0], dash._rows[1]
+    assert app_row["color"] == "#ef5350"
+    # dimmed toward the panel, so still clearly related but not identical
+    assert file_row["color"] != app_row["color"]
+    assert file_row["color"] == _blend("#ef5350", PANEL, 0.45)
+
+
+def test_config_round_trips_app_colors(tmp_path, monkeypatch):
+    import json
+    import config as config_mod
+    path = tmp_path / "config.json"
+    monkeypatch.setattr(config_mod, "CONFIG_PATH", str(path))
+    c = config_mod.Config(app_colors={"photoshop.exe": "#4d7cff"})
+    c.save()
+    assert json.loads(path.read_text())["app_colors"] == {"photoshop.exe": "#4d7cff"}
 
 
 def test_long_names_wrap_in_full(dash, tk_root, store, today):

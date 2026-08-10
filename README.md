@@ -45,6 +45,8 @@ Click the tray icon to open the dashboard.
 ### Right-click an app
 * **Track files for this app** — turn per-file tracking on or off for that app.
   (Works when the app shows the file name in its title bar.)
+* **Bar colour…** — pick a colour for that app, so Photoshop can be blue and
+  Pyxel Edit red. Your choice is saved; **Reset** goes back to the automatic one.
 * **Add to ignore list** — stop tracking it and hide it from your stats.
 
 ### Tray menu (right-click the clock icon)
