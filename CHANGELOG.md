@@ -3,7 +3,7 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
-## [Unreleased]
+## [1.3.0] — 2026-08-10
 
 ### Added
 - **Pick a bar colour per app.** Right-click a row → **Bar colour…** and choose
@@ -135,6 +135,7 @@ First release.
   Windows/macOS/Linux release builds through GitHub Actions.
 - Local SQLite storage — data never leaves the machine.
 
+[1.3.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.2.0
 [1.1.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.1.0
 [1.0.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.0.0
