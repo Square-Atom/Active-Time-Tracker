@@ -100,6 +100,45 @@ def test_manual_update_check_shows_a_result(settings, tk_root, monkeypatch):
     assert str(settings.update_btn.cget("state")) == "normal"
 
 
+def test_about_section_credits_the_author(settings, tk_root):
+    import settings as settings_mod
+    texts = []
+
+    def walk(widget):
+        for child in widget.winfo_children():
+            try:
+                texts.append(str(child.cget("text")))
+            except Exception:
+                pass
+            walk(child)
+
+    walk(settings.win)
+    blob = " ".join(texts)
+    assert "Hau Tran" in blob and "Pixelmancer Studio" in blob
+    assert settings_mod.AUTHOR_EMAIL in blob
+    assert config.APP_VERSION in blob
+
+
+def test_contact_link_opens_a_mail_draft(settings, monkeypatch):
+    import settings as settings_mod
+    import webbrowser
+    opened = []
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url))
+    settings._mail_author()
+    assert opened == [f"mailto:{settings_mod.AUTHOR_EMAIL}"]
+
+
+def test_contact_link_failure_is_not_fatal(settings, monkeypatch):
+    import tkinter.messagebox as mb
+    import webbrowser
+    monkeypatch.setattr(webbrowser, "open",
+                        lambda url: (_ for _ in ()).throw(OSError("no client")))
+    shown = []
+    monkeypatch.setattr(mb, "showinfo", lambda *a, **k: shown.append(a))
+    settings._mail_author()          # must not raise
+    assert shown
+
+
 # --- ignored apps ----------------------------------------------------------
 
 def test_ignore_window_add_and_remove(tk_root, store, today):

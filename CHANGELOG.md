@@ -13,6 +13,8 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
   file, so nothing is double-counted) or **replace** everything with it. Your
   current data is snapshotted to a `pre-restore-*.db` first, so a restore can be
   undone.
+- An **About** section at the bottom of Settings with the version, author and a
+  contact link for feedback.
 
 ## [1.3.1] — 2026-08-10
 

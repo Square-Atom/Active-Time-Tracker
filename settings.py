@@ -19,6 +19,8 @@ import sysinfo
 import updatedialog
 import updater
 
+AUTHOR_EMAIL = "contact@pixelmancer.studio"
+
 
 class SettingsWindow:
     def __init__(self, root: tk.Tk, cfg: config.Config, tracker, on_change=None,
@@ -180,6 +182,21 @@ class SettingsWindow:
         ttk.Button(row, text="Restore from backup…", style="SSmall.TButton",
                    command=self._open_restore).pack(side="left")
 
+        ttk.Separator(frm).pack(fill="x", pady=12, **pad)
+        ttk.Label(frm, text="ABOUT", style="SSection.TLabel").pack(anchor="w", **pad)
+        ttk.Label(frm, text=f"Active Time Tracker {config.APP_VERSION} — "
+                            "created by Hau Tran, Pixelmancer Studio.",
+                  style="SHint.TLabel").pack(anchor="w", pady=(4, 0), **pad)
+
+        contact = ttk.Frame(frm, style="S.TFrame")
+        contact.pack(fill="x", pady=(2, 0), **pad)
+        ttk.Label(contact, text="Feedback and bug reports are welcome:",
+                  style="SHint.TLabel").pack(side="left")
+        email = tk.Label(contact, text=AUTHOR_EMAIL, bg=theme.BG, fg=theme.ACCENT,
+                         font=("Segoe UI", 8, "underline"), cursor="hand2")
+        email.pack(side="left", padx=(4, 0))
+        email.bind("<Button-1>", lambda e: self._mail_author())
+
         # Buttons
         btns = ttk.Frame(frm, style="S.TFrame")
         btns.pack(fill="x", pady=(18, 0), **pad)
@@ -216,6 +233,14 @@ class SettingsWindow:
         except OSError:
             messagebox.showwarning("Backup", f"Couldn't open:\n{path}",
                                    parent=self.win)
+
+    def _mail_author(self) -> None:
+        """Open the user's mail client — never fail loudly over a footer link."""
+        import webbrowser
+        try:
+            webbrowser.open(f"mailto:{AUTHOR_EMAIL}")
+        except Exception:
+            messagebox.showinfo("Contact", AUTHOR_EMAIL, parent=self.win)
 
     def _open_restore(self) -> None:
         if self.open_restore_cb:
