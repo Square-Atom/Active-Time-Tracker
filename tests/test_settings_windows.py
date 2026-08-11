@@ -124,6 +124,89 @@ def test_ignore_window_add_and_remove(tk_root, store, today):
     assert cfg.ignore_apps == ["game.exe"]
 
 
+# --- restore from backup ---------------------------------------------------
+
+@pytest.fixture
+def restore_win(tk_root, store, tmp_path, today):
+    import backups
+    from restore import RestoreWindow
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 120)
+    cfg = config.Config(backup_dir=str(tmp_path / "bk"))
+    cfg.save = lambda: None  # type: ignore[method-assign]
+    backups.run(store, cfg, today=today)          # one backup to choose from
+    win = RestoreWindow(tk_root, cfg, store)
+    tk_root.update_idletasks()
+    yield win, cfg
+    try:
+        win.close()
+    except Exception:
+        pass
+
+
+def test_restore_lists_available_backups(restore_win, today):
+    win, _ = restore_win
+    assert win.listbox.size() == 1
+    assert today in win.listbox.get(0)
+
+
+def test_selecting_a_backup_summarises_it_and_enables_the_actions(restore_win, today):
+    win, _ = restore_win
+    win.listbox.selection_set(0)
+    win._on_pick()
+    assert "2m 00s" in win.info.cget("text")       # the 120s we recorded
+    assert str(win.merge_btn.cget("state")) == "normal"
+    assert str(win.replace_btn.cget("state")) == "normal"
+
+
+def test_selecting_junk_explains_and_keeps_the_actions_disabled(restore_win, tmp_path):
+    win, _ = restore_win
+    junk = tmp_path / "nope.db"
+    junk.write_bytes(b"not a database")
+    win._select(str(junk))
+    assert "⚠" in win.info.cget("text")
+    assert win.selected is None
+    assert str(win.merge_btn.cget("state")) == "disabled"
+
+
+def test_applying_a_restore_snapshots_first(restore_win, store, tmp_path,
+                                            monkeypatch, today):
+    import tkinter.messagebox as mb
+    import backups
+    import storage as storage_mod
+    win, cfg = restore_win
+    monkeypatch.setattr(mb, "askyesno", lambda *a, **k: True)
+    monkeypatch.setattr(mb, "showinfo", lambda *a, **k: None)
+
+    win.listbox.selection_set(0); win._on_pick()
+    store.add_seconds(today, "later.exe", "Later", "", 90)   # not in the backup
+    win._apply(storage_mod.REPLACE)
+
+    # the replace happened …
+    apps = {a["app"] for a in store.totals_by_app(today, today)}
+    assert apps == {"code.exe"}
+    # … and the pre-restore snapshot still holds what we discarded
+    snaps = [n for n in os.listdir(backups.backup_dir(cfg))
+             if n.startswith("pre-restore")]
+    assert len(snaps) == 1
+    undone = storage_mod.describe_backup(
+        os.path.join(backups.backup_dir(cfg), snaps[0]))
+    assert undone["seconds"] == 210, "the snapshot should hold the pre-restore total"
+
+
+def test_declining_the_confirmation_changes_nothing(restore_win, store,
+                                                    monkeypatch, today):
+    import tkinter.messagebox as mb
+    import storage as storage_mod
+    win, _ = restore_win
+    monkeypatch.setattr(mb, "askyesno", lambda *a, **k: False)
+
+    store.add_seconds(today, "later.exe", "Later", "", 90)
+    before = store.grand_total(today, today)
+    win.listbox.selection_set(0); win._on_pick()
+    win._apply(storage_mod.REPLACE)
+    assert store.grand_total(today, today) == before
+
+
 # --- app groups ------------------------------------------------------------
 
 def test_groups_window_saves_and_drops_empties(tk_root, store, cfg, today):

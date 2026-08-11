@@ -22,13 +22,14 @@ import updater
 
 class SettingsWindow:
     def __init__(self, root: tk.Tk, cfg: config.Config, tracker, on_change=None,
-                 storage=None, open_ignore=None):
+                 storage=None, open_ignore=None, open_restore=None):
         self.root = root
         self.cfg = cfg
         self.tracker = tracker
         self.on_change = on_change
         self.storage = storage
         self.open_ignore_cb = open_ignore
+        self.open_restore_cb = open_restore
 
         self.win = tk.Toplevel(root)
         self.win.title("Settings — Active Time Tracker")
@@ -174,6 +175,11 @@ class SettingsWindow:
         self.backup_status = ttk.Label(row, text="", style="SHint.TLabel")
         self.backup_status.pack(side="left", padx=(10, 0))
 
+        row = ttk.Frame(frm, style="S.TFrame")
+        row.pack(fill="x", pady=(6, 0), **pad)
+        ttk.Button(row, text="Restore from backup…", style="SSmall.TButton",
+                   command=self._open_restore).pack(side="left")
+
         # Buttons
         btns = ttk.Frame(frm, style="S.TFrame")
         btns.pack(fill="x", pady=(18, 0), **pad)
@@ -210,6 +216,10 @@ class SettingsWindow:
         except OSError:
             messagebox.showwarning("Backup", f"Couldn't open:\n{path}",
                                    parent=self.win)
+
+    def _open_restore(self) -> None:
+        if self.open_restore_cb:
+            self.open_restore_cb()
 
     def _backup_now(self) -> None:
         self.backup_status.configure(text="Backing up…")

@@ -8,11 +8,50 @@ flushed periodically (and on pause/quit) so we're not committing every second.
 from __future__ import annotations
 
 import datetime as dt
+import os
 import sqlite3
 import threading
 from collections import defaultdict
 
 import config
+
+REPLACE = "replace"   # discard current data, use the backup's
+MERGE = "merge"       # keep whichever side recorded more per (day, app, file)
+
+
+class BadBackup(Exception):
+    """The chosen file isn't a database this app can read."""
+
+
+def describe_backup(path: str) -> dict:
+    """Summarise a backup so the user can confirm before overwriting anything.
+
+    Opens read-only, so inspecting a file can never modify it.
+    """
+    if not os.path.isfile(path):
+        raise BadBackup("That file doesn't exist.")
+    try:
+        conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    except sqlite3.Error as exc:
+        raise BadBackup(f"Couldn't open the file: {exc}") from exc
+    try:
+        table = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='activity'"
+        ).fetchone()
+        if not table:
+            raise BadBackup("This doesn't look like an Active Time Tracker backup.")
+        rows, days, first, last, seconds = conn.execute(
+            "SELECT COUNT(*), COUNT(DISTINCT day), MIN(day), MAX(day),"
+            " COALESCE(SUM(seconds), 0) FROM activity"
+        ).fetchone()
+        apps = conn.execute(
+            "SELECT COUNT(DISTINCT app) FROM activity").fetchone()[0]
+    except sqlite3.DatabaseError as exc:
+        raise BadBackup(f"The file is not a readable database: {exc}") from exc
+    finally:
+        conn.close()
+    return {"rows": rows, "days": days, "apps": apps,
+            "first_day": first, "last_day": last, "seconds": seconds}
 
 
 class Storage:
@@ -76,6 +115,46 @@ class Storage:
     def close(self) -> None:
         self.flush()
         self._conn.close()
+
+    def restore_from(self, path: str, mode: str = REPLACE) -> int:
+        """Load activity from a backup file. Returns the resulting row count.
+
+        Rows are copied with SQL against an ATTACHed database rather than by
+        swapping files, so the live connection — and the tracker writing
+        through it — keep working throughout.
+
+        `REPLACE` discards what's here; `MERGE` keeps whichever side recorded
+        more for a given (day, app, file). Merging takes the larger value
+        rather than the sum, because a backup usually overlaps the current
+        data and adding them would double-count the shared days.
+        """
+        if mode not in (REPLACE, MERGE):
+            raise ValueError(f"unknown restore mode: {mode!r}")
+        describe_backup(path)          # raises if it isn't a usable backup
+        self.flush()
+
+        with self._lock:
+            self._conn.commit()        # ATTACH can't run inside a transaction
+            self._conn.execute("ATTACH DATABASE ? AS backup", (path,))
+            try:
+                with self._conn:
+                    if mode == REPLACE:
+                        self._conn.execute("DELETE FROM activity")
+                    self._conn.execute(
+                        """
+                        INSERT INTO activity (day, app, app_name, file, seconds)
+                        SELECT day, app, app_name, file, seconds
+                        FROM backup.activity WHERE true
+                        ON CONFLICT(day, app, file) DO UPDATE SET
+                            seconds = MAX(activity.seconds, excluded.seconds),
+                            app_name = excluded.app_name
+                        """
+                    )
+                    rows = self._conn.execute(
+                        "SELECT COUNT(*) FROM activity").fetchone()[0]
+            finally:
+                self._conn.execute("DETACH DATABASE backup")
+        return rows
 
     def backup_to(self, path: str) -> None:
         """Write a consistent copy of the database to `path`.

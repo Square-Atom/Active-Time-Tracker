@@ -97,8 +97,20 @@ at a different folder. Worth doing: choosing a synced folder (OneDrive,
 Nextcloud, Dropbox…) means your history survives even if the drive dies — a
 backup sitting on the same disk won't.
 
-To restore: quit the app, copy a `data-YYYY-MM-DD.db` over `data.db` (delete any
-`data.db-wal` / `data.db-shm` next to it), then start the app again.
+### Restoring
+
+**Settings → Restore from backup…** lists your backups (or **Browse…** for one
+kept elsewhere). Pick one and it shows what's inside — how much time, which
+days, how many apps — before you commit to anything. Then choose:
+
+* **Merge into my data** — adds the backup's history to what you have. Where
+  both recorded the same day and file, the larger is kept, so nothing is
+  double-counted. Use this to recover history you've lost.
+* **Replace my data** — throws away everything currently recorded and keeps
+  only the backup. Use this if your current data is wrong.
+
+Either way your current data is snapshotted to a `pre-restore-*.db` file first,
+so a restore can be undone.
 
 ## For developers
 

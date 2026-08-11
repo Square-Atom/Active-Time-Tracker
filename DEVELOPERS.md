@@ -152,9 +152,26 @@ file looking like a good backup. Failures are logged and swallowed — a backup
 must never take the tracker down.
 
 Set `backup_dir` to a synced folder (OneDrive, Nextcloud…) for off-machine
-safety; a copy on the same disk won't survive a drive failure. To restore: quit
-the app, copy a backup over `data.db`, delete the leftover `-wal`/`-shm` files,
-and relaunch.
+safety; a copy on the same disk won't survive a drive failure.
+
+### Restoring
+
+`Storage.restore_from(path, mode)` copies rows from an **ATTACHed** database
+rather than swapping files, so the live connection — and the tracker writing
+through it — keep working. (`ATTACH` can't run inside a transaction, hence the
+explicit `commit()` first.)
+
+* `REPLACE` — `DELETE` then insert.
+* `MERGE` — upsert taking `MAX(existing, incoming)` per `(day, app, file)`.
+  Deliberately not a sum: a backup normally overlaps the current data, so
+  adding them would double-count every shared day.
+
+`storage.describe_backup()` opens the file **read-only** and raises `BadBackup`
+for anything that isn't one of our databases; the UI calls it before offering
+any action, and `restore_from` calls it again before touching anything.
+`backups.safety_copy()` writes a `pre-restore-<timestamp>.db` first — named
+apart from the dated backups so it neither displaces today's nor disappears in
+rotation, since it's the only undo for a mistaken restore.
 
 Upgrading from the old "Work Time Tracker"? The data folder is migrated
 automatically on first launch.

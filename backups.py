@@ -93,6 +93,34 @@ def prune(cfg: config.Config) -> None:
                 pass
 
 
+def list_backups(cfg: config.Config) -> list[tuple[str, str]]:
+    """[(date, full path)] for the dated backups on disk, newest first."""
+    target = backup_dir(cfg)
+    return [(stamp, os.path.join(target, f"{_DB_PREFIX}{stamp}.db"))
+            for stamp in existing(cfg)]
+
+
+def safety_copy(storage, cfg: config.Config) -> str | None:
+    """Snapshot the current data before a restore overwrites it.
+
+    Named apart from the dated backups so it never displaces today's, and
+    never disappears in rotation — this is the undo for a mistaken restore.
+    """
+    target = backup_dir(cfg)
+    stamp = dt.datetime.now().strftime("%Y-%m-%d-%H%M%S")
+    path = os.path.join(target, f"pre-restore-{stamp}.db")
+    try:
+        os.makedirs(target, exist_ok=True)
+        tmp = path + ".part"
+        storage.backup_to(tmp)
+        os.replace(tmp, path)
+        _log.info("Pre-restore snapshot: %s", path)
+        return path
+    except Exception:
+        _log.exception("Could not write the pre-restore snapshot")
+        return None
+
+
 def maybe_run(storage, cfg: config.Config) -> str | None:
     """Back up if enabled and none exists for today."""
     if not is_due(cfg):

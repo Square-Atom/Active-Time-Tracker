@@ -31,6 +31,7 @@ from appicon import make_clock_image
 from dashboard import Dashboard
 from ignoreapps import IgnoreWindow
 from merges import MergesWindow
+from restore import RestoreWindow
 from settings import SettingsWindow
 from storage import Storage
 from tracker import Tracker
@@ -112,6 +113,7 @@ def main() -> None:
     settings_holder: dict[str, SettingsWindow | None] = {"win": None}
     merges_holder: dict[str, MergesWindow | None] = {"win": None}
     ignore_holder: dict[str, IgnoreWindow | None] = {"win": None}
+    restore_holder: dict[str, RestoreWindow | None] = {"win": None}
 
     def on_settings_changed():
         try:
@@ -131,6 +133,15 @@ def main() -> None:
         ignore_holder["win"] = IgnoreWindow(
             root, cfg, storage, on_change=on_settings_changed)
 
+    def open_restore():
+        existing = restore_holder["win"]
+        if existing is not None and existing.win.winfo_exists():
+            existing.win.lift()
+            existing.win.focus_force()
+            return
+        restore_holder["win"] = RestoreWindow(
+            root, cfg, storage, on_change=on_settings_changed)
+
     def open_settings():
         existing = settings_holder["win"]
         if existing is not None and existing.win.winfo_exists():
@@ -139,7 +150,7 @@ def main() -> None:
             return
         settings_holder["win"] = SettingsWindow(
             root, cfg, tracker, on_change=on_settings_changed, storage=storage,
-            open_ignore=open_ignore)
+            open_ignore=open_ignore, open_restore=open_restore)
 
     def open_merges():
         existing = merges_holder["win"]

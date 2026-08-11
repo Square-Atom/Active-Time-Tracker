@@ -41,6 +41,7 @@ Credit per tick is capped so sleep/wake gaps can't dump a huge chunk onto one ap
 | `merges.py` | "App groups" window (merge several exes into one) |
 | `appicon.py` | Clock icon shared by tray, window, and the built .exe |
 | `backups.py` | Daily rotating backups (location, rotation, scheduling) |
+| `restore.py` | "Restore from backup" window (merge / replace, with undo) |
 | `updater.py` | GitHub release check (stdlib urllib, off-thread, never raises) |
 | `updatedialog.py` | "Update available" / check-result popups; links to Releases |
 

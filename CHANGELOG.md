@@ -3,6 +3,17 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## [Unreleased]
+
+### Added
+- **Restore from a backup.** **Settings → Restore from backup…** lists your
+  backups (or browse for one kept elsewhere) and shows what's inside — how much
+  time, which days, how many apps — before you commit. Then either **merge** it
+  into your history (keeping the larger record where both have the same day and
+  file, so nothing is double-counted) or **replace** everything with it. Your
+  current data is snapshotted to a `pre-restore-*.db` first, so a restore can be
+  undone.
+
 ## [1.3.1] — 2026-08-10
 
 ### Changed
