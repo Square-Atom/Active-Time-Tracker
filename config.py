@@ -278,7 +278,7 @@ DEFAULTS = {
     # Daily rotating backups of data.db (+ config.json).
     "backup_enabled": True,
     "backup_dir": "",      # "" = <data dir>/backups; set a synced folder for
-                           # off-machine safety (OneDrive, Nextcloud, …)
+                           # off-machine safety (OneDrive, Google Drive, …)
     "backup_keep": 7,
     # Hand-picked bar colours, app key -> "#rrggbb". Anything not listed gets a
     # stable colour derived from its name.

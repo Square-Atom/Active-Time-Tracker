@@ -2,7 +2,7 @@
 
 Losing `data.db` means losing history that can't be recreated, so the app keeps
 a few dated copies. Backups go to `<data dir>/backups` by default; point
-`backup_dir` at a synced folder (OneDrive, Nextcloud, …) to get off-machine
+`backup_dir` at a synced folder (OneDrive, Google Drive, …) to get off-machine
 safety, since a copy on the same disk won't survive a drive failure.
 
 The actual copy is made by `Storage.backup_to`, which uses SQLite's backup API —

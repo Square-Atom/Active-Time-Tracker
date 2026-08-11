@@ -94,7 +94,7 @@ last 7 days. Find it via the tray menu → **Open backups folder**.
 
 In **Settings → Backup** you can turn this off, back up on demand, or point it
 at a different folder. Worth doing: choosing a synced folder (OneDrive,
-Nextcloud, Dropbox…) means your history survives even if the drive dies — a
+Google Drive, Dropbox…) means your history survives even if the drive dies — a
 backup sitting on the same disk won't.
 
 ### Restoring

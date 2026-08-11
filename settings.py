@@ -157,7 +157,7 @@ class SettingsWindow:
         ttk.Checkbutton(row, text="Back up my data daily", variable=self.backup_var,
                         style="S.TCheckbutton", takefocus=False).pack(anchor="w")
         ttk.Label(frm, text=f"Keeps the {self.cfg.backup_keep} most recent copies. "
-                            "Choose a synced folder (OneDrive, Nextcloud…) to keep "
+                            "Choose a synced folder (OneDrive, Google Drive…) to keep "
                             "them off this machine.",
                   style="SHint.TLabel", wraplength=430, justify="left").pack(
             anchor="w", **pad)

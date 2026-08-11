@@ -151,7 +151,7 @@ the live connection, produces one self-contained file, and is followed by a
 file looking like a good backup. Failures are logged and swallowed — a backup
 must never take the tracker down.
 
-Set `backup_dir` to a synced folder (OneDrive, Nextcloud…) for off-machine
+Set `backup_dir` to a synced folder (OneDrive, Google Drive, Dropbox…) for off-machine
 safety; a copy on the same disk won't survive a drive failure.
 
 ### Restoring
