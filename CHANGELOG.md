@@ -3,6 +3,19 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## [Unreleased]
+
+### Added
+- **Game controllers and MIDI keyboards keep the timer running.** Windows only
+  treats typing and mouse movement as input, so playing on a pad or a MIDI
+  keyboard counted as sitting idle and the timer stopped. Both are now watched
+  as well. Either can be switched off in **Settings → Tracking**.
+
+  Controller polling is read-only and can't disturb a running game. MIDI needs
+  to open your input ports to listen — ports another app already holds are
+  skipped, and the setting is there to turn it off if something can't reach
+  your keyboard.
+
 ## [1.4.0] — 2026-08-11
 
 ### Added

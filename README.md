@@ -79,6 +79,12 @@ toward the current app (and its open file). After 10 seconds of no input, the
 timer pauses on its own. It only notices *which* window is focused — no
 keylogging — and nothing ever leaves your computer.
 
+**Game controllers and MIDI keyboards count too.** Windows treats only typing
+and mouse movement as "input", so playing a game on a pad or a part on a MIDI
+keyboard used to look like sitting idle. Both are now watched as well, so the
+timer keeps running. You can switch either off in **Settings**; turn MIDI off if
+another app can't reach your keyboard.
+
 ## Your data
 
 Everything is stored locally in a folder you can back up or delete:

@@ -17,7 +17,8 @@ Primary platform is **Windows** (fully tested); it also targets **macOS** and
 Polling only — **no global keyboard/mouse hooks** (avoids antivirus/admin issues):
 
 1. Every `poll_interval` (default 1s) the tracker checks system idle time and the
-   foreground window.
+   foreground window. Game-pad and MIDI activity (`devices.py`) counts too —
+   Windows' idle timer only sees keyboard and mouse.
 2. If idle ≤ `idle_timeout` (default 10s), the elapsed time is credited to the
    focused app, and to its open file (parsed from the window title).
 3. Time is buffered in memory and flushed to SQLite every ~15s.
@@ -31,6 +32,7 @@ Credit per tick is capped so sleep/wake gaps can't dump a huge chunk onto one ap
 | `main.py` | Entry point: tray icon (pystray), single-instance guard, wiring, tk mainloop |
 | `tracker.py` | Background poll loop; credits active seconds; reads config live |
 | `sysinfo.py` | **Cross-platform** foreground-window, idle-time, single-instance, open-folder (dispatches by `sys.platform`) |
+| `devices.py` | Game-pad (XInput) and MIDI activity — input Windows doesn't count as input |
 | `winapi.py` | Windows ctypes backend (used by `sysinfo` on win32 only) |
 | `autostart.py` | Launch-at-login: Windows registry / macOS LaunchAgent / Linux .desktop |
 | `storage.py` | SQLite; buffered writes; read-time aggregation (app/file/day, merges, ignore) |

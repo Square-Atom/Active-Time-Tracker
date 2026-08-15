@@ -283,6 +283,10 @@ DEFAULTS = {
     # Hand-picked bar colours, app key -> "#rrggbb". Anything not listed gets a
     # stable colour derived from its name.
     "app_colors": {},
+    # Windows only counts keyboard/mouse as input, so these keep the timer
+    # running while you're on a game pad or a MIDI keyboard.
+    "count_controller_input": True,
+    "count_midi_input": True,
 }
 
 MERGE_PREFIX = "merge::"  # synthetic app key for a merged group
@@ -302,6 +306,8 @@ class Config:
     backup_dir: str = ""
     backup_keep: int = 7
     app_colors: dict[str, str] = field(default_factory=dict)
+    count_controller_input: bool = True
+    count_midi_input: bool = True
 
     def save(self) -> None:
         data = {
@@ -317,6 +323,8 @@ class Config:
             "backup_dir": self.backup_dir,
             "backup_keep": self.backup_keep,
             "app_colors": self.app_colors,
+            "count_controller_input": self.count_controller_input,
+            "count_midi_input": self.count_midi_input,
         }
         tmp = CONFIG_PATH + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
@@ -390,6 +398,8 @@ def load() -> Config:
         backup_dir=data.get("backup_dir", ""),
         backup_keep=int(data.get("backup_keep", 7) or 7),
         app_colors=data.get("app_colors", {}),
+        count_controller_input=data.get("count_controller_input", True),
+        count_midi_input=data.get("count_midi_input", True),
     )
     return cfg
 

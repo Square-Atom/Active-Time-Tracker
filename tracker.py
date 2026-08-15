@@ -14,6 +14,7 @@ import time
 
 import backups
 import config
+import devices
 import sysinfo
 from storage import Storage
 
@@ -29,6 +30,7 @@ class Tracker:
     def __init__(self, storage: Storage, cfg: config.Config):
         self.storage = storage
         self.cfg = cfg
+        self.devices = devices.DeviceActivity()
         self._own_pid = os.getpid()
         self._thread: threading.Thread | None = None
         self._stop = threading.Event()
@@ -107,7 +109,13 @@ class Tracker:
                 self.is_active = False
                 continue
 
-            idle = sysinfo.get_idle_seconds()
+            # Windows counts only keyboard/mouse as input, so a game pad or a
+            # MIDI keyboard would look like idleness. Take whichever source was
+            # used most recently.
+            self.devices.apply(controllers=self.cfg.count_controller_input,
+                               midi=self.cfg.count_midi_input)
+            idle = min(sysinfo.get_idle_seconds(),
+                       self.devices.seconds_since_input())
             if idle > idle_timeout:
                 self.is_active = False
                 self.current_app_name = ""
@@ -143,4 +151,5 @@ class Tracker:
             self.current_app_name = app_name
             self.current_file = file
 
+        self.devices.close()   # hand MIDI ports back when we stop
         self.storage.flush()

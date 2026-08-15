@@ -101,6 +101,41 @@ Polling only — **no global keyboard/mouse hooks**, no admin rights:
 3. Time is buffered in memory and flushed to SQLite every ~15s (and on
    pause/quit). Credit per tick is capped so sleep/wake gaps can't over-count.
 
+## Controller and MIDI activity (`devices.py`)
+
+`GetLastInputInfo` only reports keyboard and mouse, so a game pad or MIDI
+keyboard reads as idleness. `devices.DeviceActivity` watches both and the
+tracker takes `min(system_idle, device_idle)`. Windows-only; elsewhere it
+reports `NEVER`, which leaves the existing behaviour untouched.
+
+**Controllers** — XInput polled through ctypes, no dependency. Polling is
+read-only and never exclusive, so it can't disturb a running game. Two details
+matter:
+
+* Sticks drift and triggers jitter, so raw values change constantly even when
+  nobody is holding the pad — and `dwPacketNumber` increments with them. State
+  is quantised (`_AXIS_STEP`, `_TRIGGER_STEP`) so only a real nudge counts.
+* Querying an empty XInput slot is slow, so all four slots are only rescanned
+  every few seconds; connected pads are polled every tick.
+
+**MIDI** — `midiInOpen` per input port via winmm. Two hazards:
+
+* **Realtime chatter.** Status bytes `0xF8`–`0xFF` are clock, active sensing and
+  friends, which many keyboards emit several times a second regardless of
+  whether anyone is playing. Counting those would mean never going idle, so
+  `is_musical_message()` filters them. (An Oxygen Pro 49 stays silent when idle,
+  but plenty of gear doesn't.)
+* **Port exclusivity.** Many Windows MIDI ports are single-client, so holding
+  one open could stop a DAW using the keyboard — and since the app autostarts,
+  it would usually get there first. Ports already in use are skipped
+  (`MMSYSERR_ALLOCATED`) rather than fought over, each port opens independently
+  so one refusal doesn't lose the rest, and ports are released when the tracker
+  stops or the setting is turned off. The setting exists so a user with a
+  single-client device can opt out.
+
+The ctypes callback object is kept on the watcher: let it be collected and the
+next MIDI message crashes the process.
+
 ## Cross-platform notes
 
 OS-specific access (focus window, idle time, autostart, single-instance) lives
