@@ -16,8 +16,10 @@ import logging
 import os
 import re
 import shutil
+import time
 
 import config
+import storage
 
 _DB_PREFIX, _CFG_PREFIX = "data-", "config-"
 _STAMP_RE = re.compile(r"^(?:data|config)-(\d{4}-\d{2}-\d{2})\.(?:db|json)$")
@@ -44,32 +46,82 @@ def existing(cfg: config.Config) -> list[str]:
     return sorted(stamps, reverse=True)
 
 
-def is_due(cfg: config.Config, today: str | None = None) -> bool:
-    """True when no backup exists for today yet."""
+def _db_path(cfg: config.Config, stamp: str) -> str:
+    return os.path.join(backup_dir(cfg), f"{_DB_PREFIX}{stamp}.db")
+
+
+def is_due(cfg: config.Config, today: str | None = None,
+           now: float | None = None) -> bool:
+    """True when today has no backup yet, or the one it has has gone stale.
+
+    Backing up only once a day left everything since that morning unprotected —
+    a day's work could be lost with nothing to restore from. Today's file is
+    refreshed every `backup_interval_hours` instead, which caps the exposure.
+    """
     if not cfg.backup_enabled:
         return False
     today = today or dt.date.today().isoformat()
     have = existing(cfg)
-    return not have or have[0] < today
+    if not have or have[0] < today:
+        return True
+    try:
+        age = (now or time.time()) - os.path.getmtime(_db_path(cfg, today))
+    except OSError:
+        return True                      # today's file is listed but unreadable
+    return age >= max(0.0, float(cfg.backup_interval_hours)) * 3600
 
 
-def run(storage, cfg: config.Config, today: str | None = None) -> str | None:
+def _lost_history(new_path: str, old_path: str) -> str | None:
+    """Describe what a replacement would throw away, or None if it's safe.
+
+    Refreshing today's backup through the day means we can overwrite a good
+    copy with a bad one: if the live database is reverted or damaged, the very
+    next backup would bake that in and destroy the last good copy. So a
+    replacement that has *less* history than what's already there is refused.
+    """
+    if not os.path.exists(old_path):
+        return None
+    try:
+        new = storage.describe_backup(new_path)
+        old = storage.describe_backup(old_path)
+    except storage.BadBackup:
+        return None                      # can't compare; let the write proceed
+    if new["seconds"] < old["seconds"] or new["rows"] < old["rows"]:
+        return (f"{old['rows']} rows / {old['seconds'] / 3600:.2f}h on disk vs "
+                f"{new['rows']} rows / {new['seconds'] / 3600:.2f}h now")
+    return None
+
+
+def run(storage_obj, cfg: config.Config, today: str | None = None,
+        now: float | None = None, force: bool = False) -> str | None:
     """Write today's backup and prune old ones. Returns the .db path, or None.
 
     Never raises: a failed backup is logged and otherwise invisible, because it
     must never take the tracker down with it.
+
+    `force` skips the shrink check — used by the manual "Back up now" button,
+    where the user has explicitly asked for the current state whatever it holds.
     """
     stamp = today or dt.date.today().isoformat()
     target = backup_dir(cfg)
     try:
         os.makedirs(target, exist_ok=True)
-        db_path = os.path.join(target, f"{_DB_PREFIX}{stamp}.db")
+        db_path = _db_path(cfg, stamp)
         # Write to a temp name first so an interrupted run can't leave a
         # half-written file looking like a good backup.
         tmp = db_path + ".part"
-        storage.backup_to(tmp)
-        os.replace(tmp, db_path)
+        storage_obj.backup_to(tmp)
 
+        if not force:
+            lost = _lost_history(tmp, db_path)
+            if lost:
+                os.remove(tmp)
+                _log.warning(
+                    "Backup skipped: today's copy would lose history (%s). "
+                    "Keeping the existing file.", lost)
+                return None
+
+        os.replace(tmp, db_path)
         if os.path.exists(config.CONFIG_PATH):
             shutil.copy2(config.CONFIG_PATH,
                          os.path.join(target, f"{_CFG_PREFIX}{stamp}.json"))
@@ -100,7 +152,7 @@ def list_backups(cfg: config.Config) -> list[tuple[str, str]]:
             for stamp in existing(cfg)]
 
 
-def safety_copy(storage, cfg: config.Config) -> str | None:
+def safety_copy(storage_obj, cfg: config.Config) -> str | None:
     """Snapshot the current data before a restore overwrites it.
 
     Named apart from the dated backups so it never displaces today's, and
@@ -112,7 +164,7 @@ def safety_copy(storage, cfg: config.Config) -> str | None:
     try:
         os.makedirs(target, exist_ok=True)
         tmp = path + ".part"
-        storage.backup_to(tmp)
+        storage_obj.backup_to(tmp)
         os.replace(tmp, path)
         _log.info("Pre-restore snapshot: %s", path)
         return path
@@ -121,8 +173,8 @@ def safety_copy(storage, cfg: config.Config) -> str | None:
         return None
 
 
-def maybe_run(storage, cfg: config.Config) -> str | None:
+def maybe_run(storage_obj, cfg: config.Config) -> str | None:
     """Back up if enabled and none exists for today."""
     if not is_due(cfg):
         return None
-    return run(storage, cfg)
+    return run(storage_obj, cfg)

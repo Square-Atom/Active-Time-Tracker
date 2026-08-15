@@ -22,6 +22,15 @@ import updater
 AUTHOR_EMAIL = "contact@pixelmancer.studio"
 
 
+def _hours(value: float) -> str:
+    """'hour' / '3 hours' / '30 minutes' for the backup-interval hint."""
+    if value <= 0:
+        return "few minutes"
+    if value < 1:
+        return f"{round(value * 60)} minutes"
+    return "hour" if value == 1 else f"{value:g} hours"
+
+
 class SettingsWindow:
     def __init__(self, root: tk.Tk, cfg: config.Config, tracker, on_change=None,
                  storage=None, open_ignore=None, open_restore=None):
@@ -177,7 +186,8 @@ class SettingsWindow:
         row.pack(fill="x", pady=(4, 0), **pad)
         ttk.Checkbutton(row, text="Back up my data daily", variable=self.backup_var,
                         style="S.TCheckbutton", takefocus=False).pack(anchor="w")
-        ttk.Label(frm, text=f"Keeps the {self.cfg.backup_keep} most recent copies. "
+        ttk.Label(frm, text=f"Refreshed every {_hours(self.cfg.backup_interval_hours)}, "
+                            f"keeping the {self.cfg.backup_keep} most recent days. "
                             "Choose a synced folder (OneDrive, Google Drive…) to keep "
                             "them off this machine.",
                   style="SHint.TLabel", wraplength=430, justify="left").pack(
@@ -270,7 +280,10 @@ class SettingsWindow:
     def _backup_now(self) -> None:
         self.backup_status.configure(text="Backing up…")
         self.win.update_idletasks()
-        path = backups.run(self.storage, self._pending_cfg()) if self.storage else None
+        # force: the user asked for this explicitly, so don't second-guess it
+        # with the shrink check the automatic runs use.
+        path = (backups.run(self.storage, self._pending_cfg(), force=True)
+                if self.storage else None)
         self.backup_status.configure(
             text=f"Saved {os.path.basename(path)}" if path else "Backup failed")
 

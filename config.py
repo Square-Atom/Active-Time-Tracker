@@ -280,6 +280,9 @@ DEFAULTS = {
     "backup_dir": "",      # "" = <data dir>/backups; set a synced folder for
                            # off-machine safety (OneDrive, Google Drive, …)
     "backup_keep": 7,
+    # Today's backup is refreshed this often, so a loss costs at most this long
+    # rather than everything since the morning.
+    "backup_interval_hours": 1,
     # Hand-picked bar colours, app key -> "#rrggbb". Anything not listed gets a
     # stable colour derived from its name.
     "app_colors": {},
@@ -305,6 +308,7 @@ class Config:
     backup_enabled: bool = True
     backup_dir: str = ""
     backup_keep: int = 7
+    backup_interval_hours: float = 1
     app_colors: dict[str, str] = field(default_factory=dict)
     count_controller_input: bool = True
     count_midi_input: bool = True
@@ -322,6 +326,7 @@ class Config:
             "backup_enabled": self.backup_enabled,
             "backup_dir": self.backup_dir,
             "backup_keep": self.backup_keep,
+            "backup_interval_hours": self.backup_interval_hours,
             "app_colors": self.app_colors,
             "count_controller_input": self.count_controller_input,
             "count_midi_input": self.count_midi_input,
@@ -397,6 +402,7 @@ def load() -> Config:
         backup_enabled=data.get("backup_enabled", True),
         backup_dir=data.get("backup_dir", ""),
         backup_keep=int(data.get("backup_keep", 7) or 7),
+        backup_interval_hours=float(data.get("backup_interval_hours", 1) or 1),
         app_colors=data.get("app_colors", {}),
         count_controller_input=data.get("count_controller_input", True),
         count_midi_input=data.get("count_midi_input", True),

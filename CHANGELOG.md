@@ -5,6 +5,18 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
 
 ## [Unreleased]
 
+### Fixed
+- **Backups now run every hour, not once a day.** A backup was only taken the
+  first time the app ran each day, so everything since that morning had nothing
+  to restore from — a day's work could be lost with no copy of it anywhere.
+  Today's backup is refreshed hourly (`backup_interval_hours`), capping what a
+  problem can cost.
+- **A backup can no longer overwrite a good copy with a worse one.** If the live
+  database shrinks — reverted or damaged by something outside the app — the next
+  scheduled backup would have saved that state over the last good copy and made
+  the loss permanent. Shrinking backups are refused and logged instead.
+  **Back up now** still saves whatever you have, since that's explicit.
+
 ### Added
 - **Game controllers and MIDI keyboards keep the timer running.** Windows only
   treats typing and mouse movement as input, so playing on a pad or a MIDI

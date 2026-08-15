@@ -4,6 +4,7 @@ import os
 
 import backups
 import config
+import storage
 
 
 def _cfg(tmp_path, **kw):
@@ -55,6 +56,96 @@ def test_is_due_only_once_a_day(store, tmp_path, today):
     backups.run(store, c, today=today)
     assert backups.is_due(c, today) is False
     assert backups.is_due(c, "2099-01-01") is True   # a later day is due again
+
+
+def test_todays_backup_is_refreshed_through_the_day(store, tmp_path, today):
+    """Backing up once a day left everything since the morning unprotected."""
+    c = _cfg(tmp_path, backup_interval_hours=1)
+    backups.run(store, c, today=today)
+    assert backups.is_due(c, today) is False        # just written
+
+    later = os.path.getmtime(backups._db_path(c, today)) + 3601
+    assert backups.is_due(c, today, now=later) is True, "should refresh hourly"
+
+
+def test_interval_is_respected(store, tmp_path, today):
+    c = _cfg(tmp_path, backup_interval_hours=6)
+    backups.run(store, c, today=today)
+    written = os.path.getmtime(backups._db_path(c, today))
+    assert backups.is_due(c, today, now=written + 3600) is False   # 1h later
+    assert backups.is_due(c, today, now=written + 6 * 3600) is True
+
+
+def test_zero_interval_means_every_check(store, tmp_path, today):
+    c = _cfg(tmp_path, backup_interval_hours=0)
+    backups.run(store, c, today=today)
+    assert backups.is_due(c, today) is True
+
+
+# --- refusing to overwrite a good backup with a worse one ------------------
+
+def test_a_shrunken_backup_does_not_replace_a_good_one(store, tmp_path, today):
+    """The incident this guards against: the live database was reverted, and a
+    later backup would have baked that in and destroyed the last good copy."""
+    for day in ("2026-08-12", "2026-08-13", "2026-08-14"):
+        store.add_seconds(day, "code.exe", "VS Code", "a.py", 3600)
+    c = _cfg(tmp_path)
+    good = backups.run(store, c, today=today)
+    before = storage.describe_backup(good)
+    assert before["seconds"] == 3 * 3600
+
+    # simulate the loss, then let the next scheduled backup run
+    store.flush()
+    store._conn.execute("DELETE FROM activity WHERE day != '2026-08-12'")
+    store._conn.commit()
+    assert backups.run(store, c, today=today) is None, "should refuse"
+
+    after = storage.describe_backup(backups._db_path(c, today))
+    assert after["seconds"] == before["seconds"], "the good copy must survive"
+
+
+def test_no_part_file_is_left_after_a_refusal(store, tmp_path, today):
+    c = _cfg(tmp_path)
+    store.add_seconds("2026-08-12", "a.exe", "A", "", 100)
+    backups.run(store, c, today=today)
+    store.flush()
+    store._conn.execute("DELETE FROM activity")
+    store._conn.commit()
+    backups.run(store, c, today=today)
+    assert [n for n in os.listdir(backups.backup_dir(c)) if n.endswith(".part")] == []
+
+
+def test_growing_data_still_replaces_normally(store, tmp_path, today):
+    c = _cfg(tmp_path)
+    store.add_seconds("2026-08-12", "a.exe", "A", "", 100)
+    backups.run(store, c, today=today)
+    store.add_seconds("2026-08-12", "a.exe", "A", "", 500)
+    assert backups.run(store, c, today=today) is not None
+    assert storage.describe_backup(backups._db_path(c, today))["seconds"] == 600
+
+
+def test_force_overrides_the_guard(store, tmp_path, today):
+    """The manual button means "save what I have now", whatever that is."""
+    c = _cfg(tmp_path)
+    store.add_seconds("2026-08-12", "a.exe", "A", "", 500)
+    backups.run(store, c, today=today)
+    store.flush()
+    store._conn.execute("DELETE FROM activity")
+    store._conn.commit()
+
+    assert backups.run(store, c, today=today, force=True) is not None
+    assert storage.describe_backup(backups._db_path(c, today))["seconds"] == 0
+
+
+def test_the_guard_only_applies_to_the_same_day(store, tmp_path):
+    """A new day starts its own file, so yesterday is never compared against."""
+    c = _cfg(tmp_path)
+    store.add_seconds("2026-08-12", "a.exe", "A", "", 5000)
+    backups.run(store, c, today="2026-08-12")
+    store.flush()
+    store._conn.execute("DELETE FROM activity")
+    store._conn.commit()
+    assert backups.run(store, c, today="2026-08-13") is not None
 
 
 def test_disabled_means_never_due(tmp_path, today):

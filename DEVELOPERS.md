@@ -173,9 +173,23 @@ Stored in the per-user data folder (see the README for the path per OS):
 
 ### Backups
 
-A backup runs once a day, checked cheaply on the tracker's existing flush cycle,
-keeping the newest `backup_keep` (default 7) copies as
-`backups/data-YYYY-MM-DD.db` plus the matching `config-*.json`.
+Backups are checked cheaply on the tracker's existing flush cycle, keeping the
+newest `backup_keep` (default 7) days as `backups/data-YYYY-MM-DD.db` plus the
+matching `config-*.json`. Today's file is **rewritten every
+`backup_interval_hours`** (default 1). Backing up only once a day left
+everything since that morning unprotected — a real incident lost a day's work
+because the only backup predated it.
+
+Two consequences of refreshing through the day:
+
+* **`run()` refuses to replace today's backup with one holding less history**
+  (`_lost_history`). If the live database is reverted or damaged, the next
+  scheduled backup would otherwise bake that in and destroy the last good copy —
+  which would have turned a recoverable incident into permanent loss. The
+  refusal is logged. `force=True` skips it for the manual "Back up now", where
+  the user has explicitly asked to save the current state.
+* `_BACKUP_CHECK_SECONDS` (5 min) must stay well under the shortest sensible
+  interval, or the interval gets rounded up to the check period.
 
 `Storage.backup_to()` uses **SQLite's backup API**, not a file copy. This matters:
 in WAL mode most recent commits live in the `-wal` sidecar, so copying `data.db`
