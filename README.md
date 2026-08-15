@@ -125,6 +125,15 @@ days, how many apps — before you commit to anything. Then choose:
 Either way your current data is snapshotted to a `pre-restore-*.db` file first,
 so a restore can be undone.
 
+> **Use this window rather than copying files by hand.** Copying a backup over
+> `data.db` in Explorer leaves the `data.db-wal` file beside it belonging to the
+> *old* database, and the two get blended into something that returns different
+> answers on every read. The restore window can't get this wrong.
+
+If the data file is ever damaged anyway, the app notices at startup, moves the
+damaged copy into a `damaged-…` folder, restores your newest healthy backup and
+tells you what it did.
+
 ## For developers
 
 Running from source, building the apps yourself, the automatic release build,

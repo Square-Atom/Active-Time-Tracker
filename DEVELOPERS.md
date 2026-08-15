@@ -203,6 +203,28 @@ must never take the tracker down.
 Set `backup_dir` to a synced folder (OneDrive, Google Drive, Dropbox…) for off-machine
 safety; a copy on the same disk won't survive a drive failure.
 
+### Corruption recovery
+
+`backups.repair_if_corrupt()` runs at startup, **before anything opens the
+database** — damage can only be repaired while nothing holds the file.
+`storage.integrity_problem()` runs `PRAGMA integrity_check`; if it fails, the
+data file and its sidecars are moved into a `damaged-<timestamp>/` folder, the
+newest backup that passes its own check is copied into place, and the user is
+told. Damaged files are moved, never deleted: they may hold the newest work,
+and a damaged database still beats no database when there's nothing to restore
+from.
+
+This exists because of a real incident. A backup was copied over `data.db`
+while its `-wal` sidecar was left behind, so SQLite blended two unrelated
+databases: `integrity_check` reported a B-tree ordering error and the same
+query returned **different row counts on consecutive reads**, which is far
+harder to spot than an outright failure. Note the check must open the database
+normally rather than with `immutable=1` — the main file alone was perfectly
+sound, and only applying the stale WAL revealed the damage.
+
+`journal_size_limit` caps the WAL so a stale one can't reach the 4 MB that made
+that incident so destructive.
+
 ### Restoring
 
 `Storage.restore_from(path, mode)` copies rows from an **ATTACHed** database

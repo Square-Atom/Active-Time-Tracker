@@ -174,7 +174,75 @@ def safety_copy(storage_obj, cfg: config.Config) -> str | None:
 
 
 def maybe_run(storage_obj, cfg: config.Config) -> str | None:
-    """Back up if enabled and none exists for today."""
+    """Back up if enabled and today's copy is missing or stale."""
     if not is_due(cfg):
+        return None
+    return run(storage_obj, cfg)
+
+
+def newest_sound_backup(cfg: config.Config) -> tuple[str, str] | None:
+    """The most recent backup that passes an integrity check, as (date, path)."""
+    for stamp, path in list_backups(cfg):
+        if os.path.exists(path) and storage.integrity_problem(path) is None:
+            return stamp, path
+    return None
+
+
+def repair_if_corrupt(cfg: config.Config, db_path: str | None = None) -> str | None:
+    """Swap a damaged database for the newest sound backup, before it's opened.
+
+    Returns a sentence describing what happened, or None if nothing was wrong.
+
+    Must run while nothing has the database open — at startup, after the
+    single-instance guard. The damaged files are moved aside rather than
+    deleted: they may still hold the newest work, and a corrupt database is
+    better than no database if there's nothing to restore from.
+    """
+    db_path = db_path or config.DB_PATH
+    problem = storage.integrity_problem(db_path)
+    if problem is None:
+        return None
+    _log.error("Database failed its integrity check: %s", problem.splitlines()[0])
+
+    candidate = newest_sound_backup(cfg)
+    if candidate is None:
+        _log.error("No sound backup to recover from; leaving the database in place")
+        return ("Your data file is damaged and there's no healthy backup to "
+                "restore from. Tracking will continue, but please check the "
+                "backups folder.")
+
+    stamp, source = candidate
+    quarantine = os.path.join(os.path.dirname(db_path) or ".",
+                              "damaged-" + dt.datetime.now().strftime("%Y-%m-%d-%H%M%S"))
+    try:
+        os.makedirs(quarantine, exist_ok=True)
+        for suffix in ("", "-wal", "-shm"):
+            part = db_path + suffix
+            if os.path.exists(part):
+                # Move every part together: leaving a sidecar behind is what
+                # caused the damage in the first place.
+                shutil.move(part, os.path.join(quarantine,
+                                               os.path.basename(part)))
+        shutil.copy2(source, db_path)
+    except OSError:
+        _log.exception("Could not recover the database")
+        return ("Your data file is damaged and recovering it failed. Please "
+                "check the backups folder.")
+
+    _log.warning("Recovered from %s; damaged files kept in %s", source, quarantine)
+    return (f"Your data file was damaged, so it was restored from the backup "
+            f"of {stamp}. The damaged copy was kept in "
+            f"{os.path.basename(quarantine)} in case it's needed.")
+
+
+def run_on_exit(storage_obj, cfg: config.Config) -> str | None:
+    """Capture the final state as the app closes.
+
+    Ignores the interval — quitting is exactly when the newest work is at risk,
+    and the alternative is losing everything since the last hourly run. Still
+    goes through the usual shrink check, so quitting after something has damaged
+    the database can't overwrite a good copy.
+    """
+    if not cfg.backup_enabled:
         return None
     return run(storage_obj, cfg)

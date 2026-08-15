@@ -54,6 +54,29 @@ def describe_backup(path: str) -> dict:
             "first_day": first, "last_day": last, "seconds": seconds}
 
 
+def integrity_problem(path: str) -> str | None:
+    """None if the database is sound, else SQLite's description of the damage.
+
+    Worth running before anything opens the database for real: a `data.db`
+    replaced by hand while its `-wal` sidecar was left behind blends two
+    unrelated databases, and the result reads *differently on each query*
+    rather than failing outright.
+    """
+    if not os.path.isfile(path):
+        return None                       # nothing there yet is not damage
+    try:
+        conn = sqlite3.connect(path)
+    except sqlite3.Error as exc:
+        return str(exc)
+    try:
+        result = conn.execute("PRAGMA integrity_check").fetchone()[0]
+    except sqlite3.DatabaseError as exc:
+        return str(exc)
+    finally:
+        conn.close()
+    return None if result == "ok" else result
+
+
 class Storage:
     def __init__(self, db_path: str = config.DB_PATH):
         self.db_path = db_path
@@ -62,6 +85,9 @@ class Storage:
         self._buffer: dict[tuple[str, str, str, str], float] = defaultdict(float)
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
+        # Keep the -wal sidecar from growing without bound. A large stale WAL
+        # is what makes a hand-replaced data.db so damaging.
+        self._conn.execute("PRAGMA journal_size_limit=4194304")
         self._init_schema()
 
     def _init_schema(self) -> None:

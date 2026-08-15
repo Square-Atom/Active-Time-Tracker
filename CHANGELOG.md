@@ -5,6 +5,15 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
 
 ## [Unreleased]
 
+### Added
+- **Backup when you quit**, so closing the app never leaves recent work
+  uncaptured.
+- **Damaged data files are repaired automatically.** At startup the app checks
+  the data file, and if it's damaged it moves the broken copy into a
+  `damaged-…` folder, restores your newest healthy backup and tells you what
+  happened. Nothing is deleted — the damaged copy is kept in case it holds
+  something worth salvaging.
+
 ### Fixed
 - **Backups now run every hour, not once a day.** A backup was only taken the
   first time the app ran each day, so everything since that morning had nothing

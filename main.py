@@ -16,6 +16,7 @@ import logging
 import os
 import sys
 import tkinter as tk
+from tkinter import messagebox
 
 import pystray
 from PIL import ImageTk
@@ -80,6 +81,27 @@ def _set_window_icon(root) -> None:
     root.iconphoto(True, root._app_icon)
 
 
+def close_down(tracker, storage, cfg, state: dict) -> bool:
+    """Stop tracking and capture a final backup, then let go of the database.
+
+    Both exit paths (tray Quit, and the mainloop unwinding afterwards) call
+    this and either can run first, so `state` makes it safe to call twice —
+    otherwise the second call would try to back up a closed database. Returns
+    True if this call did the work.
+    """
+    if state.get("done"):
+        return False
+    state["done"] = True
+    try:
+        tracker.stop()                      # flushes buffered seconds first
+        backups.run_on_exit(storage, cfg)   # so the backup includes them
+    except Exception:
+        logging.exception("Problem while shutting down")
+    finally:
+        storage.close()
+    return True
+
+
 def main() -> None:
     if not sysinfo.single_instance(APP_ID):
         logging.info("Another instance is already running; exiting.")
@@ -89,6 +111,10 @@ def main() -> None:
     _claim_taskbar_identity()  # before any window exists
 
     cfg = config.load()
+    # Check the database before opening it: damage has to be repaired while
+    # nothing holds it, and a blended database reads differently on every
+    # query rather than failing outright, so it must not be trusted first.
+    recovery_note = backups.repair_if_corrupt(cfg)
     storage = Storage()
     tracker = Tracker(storage, cfg)
 
@@ -202,10 +228,14 @@ def main() -> None:
         except OSError:
             logging.exception("Could not open the backups folder")
 
+    shut_down: dict = {}
+
+    def shutdown():
+        close_down(tracker, storage, cfg, shut_down)
+
     def do_quit(icon, item):
         try:
-            tracker.stop()
-            storage.close()
+            shutdown()
         finally:
             icon.visible = False
             icon.stop()
@@ -234,6 +264,12 @@ def main() -> None:
     else:
         root.withdraw()
 
+    # Losing history silently is the worst outcome, so say so plainly rather
+    # than leaving it in the log for someone to find later.
+    if recovery_note:
+        root.after(500, lambda: messagebox.showwarning(
+            "Data recovered", recovery_note, parent=root))
+
     # Optional startup update check: runs in the background and only speaks up
     # when there's actually a newer release.
     if cfg.check_updates_on_startup:
@@ -246,8 +282,7 @@ def main() -> None:
     try:
         root.mainloop()
     finally:
-        tracker.stop()
-        storage.close()
+        shutdown()
         try:
             icon.stop()
         except Exception:

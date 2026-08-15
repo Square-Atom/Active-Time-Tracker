@@ -148,6 +148,47 @@ def test_the_guard_only_applies_to_the_same_day(store, tmp_path):
     assert backups.run(store, c, today="2026-08-13") is not None
 
 
+# --- backing up as the app closes -----------------------------------------
+
+def test_exit_backup_runs_even_when_one_is_not_due(store, tmp_path, today):
+    """Quitting is exactly when the newest work is at risk; waiting for the
+    next interval would lose everything since the last hourly run."""
+    c = _cfg(tmp_path, backup_interval_hours=24)
+    backups.run(store, c, today=today)
+    assert backups.is_due(c, today) is False        # nowhere near due
+
+    store.add_seconds(today, "code.exe", "VS Code", "late.py", 900)
+    assert backups.run_on_exit(store, c) is not None
+    assert storage.describe_backup(backups._db_path(c, today))["seconds"] == 900
+
+
+def test_exit_backup_captures_time_still_in_the_buffer(store, tmp_path, today):
+    c = _cfg(tmp_path)
+    store.add_seconds(today, "code.exe", "VS Code", "a.py", 45)   # unflushed
+    backups.run_on_exit(store, c)
+    assert storage.describe_backup(backups._db_path(c, today))["seconds"] == 45
+
+
+def test_exit_backup_respects_the_setting(store, tmp_path, today):
+    c = _cfg(tmp_path, backup_enabled=False)
+    store.add_seconds(today, "a.exe", "A", "", 10)
+    assert backups.run_on_exit(store, c) is None
+    assert not os.path.exists(backups._db_path(c, today))
+
+
+def test_exit_backup_cannot_overwrite_a_good_copy(store, tmp_path, today):
+    """Quitting after something damaged the database must not bake it in."""
+    store.add_seconds("2026-08-12", "a.exe", "A", "", 4000)
+    c = _cfg(tmp_path)
+    backups.run(store, c, today=today)
+    store.flush()
+    store._conn.execute("DELETE FROM activity")
+    store._conn.commit()
+
+    assert backups.run_on_exit(store, c) is None
+    assert storage.describe_backup(backups._db_path(c, today))["seconds"] == 4000
+
+
 def test_disabled_means_never_due(tmp_path, today):
     c = _cfg(tmp_path, backup_enabled=False)
     assert backups.is_due(c, today) is False
