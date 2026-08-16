@@ -8,6 +8,10 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
 ### Added
 - **Backup when you quit**, so closing the app never leaves recent work
   uncaptured.
+- **A release can put its own message in the update popup**, for when an update
+  is worth explaining. Taken from the release notes (optionally just the part
+  between `<!--announce-->` markers); with nothing there the popup reads as
+  before.
 - **Damaged data files are repaired automatically.** At startup the app checks
   the data file, and if it's damaged it moves the broken copy into a
   `damaged-…` folder, restores your newest healthy backup and tells you what

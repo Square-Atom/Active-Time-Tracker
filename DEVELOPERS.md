@@ -84,6 +84,25 @@ git push origin main --follow-tags
 Step 1 matters: the update check compares the GitHub tag against `APP_VERSION`,
 so a stale constant tells every user an update is available.
 
+### Saying something in the update popup
+
+Whatever a release's body says is shown to everyone whose app notices the
+update, so it doubles as the way to get a word out when one matters:
+
+```
+<!--announce-->
+Important: this release fixes a bug that could corrupt your tracked time.
+Please update as soon as you can.
+<!--/announce-->
+```
+
+`updater.announcement()` takes the text between those markers; without them the
+whole body is used. Either way it's trimmed to 10 lines / 700 characters so a
+long changelog can't overflow a small dialog, and it's rendered as **plain
+text** — never interpreted as markup. An empty body falls back to the popup's
+standard wording. The version line is always shown regardless, so the reader
+knows what's being offered.
+
 The workflow runs on the tag and produces `ActiveTimeTracker-windows.exe`,
 `ActiveTimeTracker-macos.zip`, and `ActiveTimeTracker-linux`, uploading them to
 the Release for that tag. You can also trigger a test build from the repo's

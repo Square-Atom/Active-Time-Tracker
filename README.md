@@ -67,7 +67,8 @@ The app can check GitHub for a newer release. In **Settings** you'll find
 
 If a new version exists, a popup links you to the Releases page — you download
 and replace the app yourself. Nothing is downloaded or installed automatically,
-and the check only reads the public release info.
+and the check only reads the public release info. An important release may
+include a short note in that popup explaining why it's worth installing.
 
 See [CHANGELOG.md](CHANGELOG.md) for what's new in each version.
 

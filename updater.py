@@ -33,6 +33,8 @@ class UpdateResult:
     latest: str = ""       # version string of the latest release, e.g. "1.1.0"
     url: str = RELEASES_PAGE
     message: str = ""      # human-readable detail (used for errors)
+    notes: str = ""        # the release's own words, shown instead of the
+                           # default blurb when there's something to say
 
     @property
     def has_update(self) -> bool:
@@ -51,6 +53,41 @@ def is_newer(latest: str, current: str) -> bool:
     a += (0,) * (size - len(a))
     b += (0,) * (size - len(b))
     return a > b
+
+
+ANNOUNCE_START = "<!--announce-->"
+ANNOUNCE_END = "<!--/announce-->"
+_MAX_NOTE_LINES = 10
+_MAX_NOTE_CHARS = 700
+
+
+def announcement(body: str | None) -> str:
+    """The message to show in the update popup, taken from the release notes.
+
+    Whatever a release says is shown to everyone who has the app, so it doubles
+    as a way to get a word out with an important update. Wrapping part of the
+    notes in `<!--announce-->…<!--/announce-->` picks out just that part, which
+    keeps a long changelog out of a small dialog. With no markers the whole
+    body is used, trimmed to something a dialog can hold; with nothing at all
+    the popup falls back to its standard wording.
+
+    Rendered as plain text — never interpreted as markup.
+    """
+    text = (body or "").strip()
+    if not text:
+        return ""
+    if ANNOUNCE_START in text:
+        text = text.split(ANNOUNCE_START, 1)[1]
+        text = text.split(ANNOUNCE_END, 1)[0]
+    lines = [ln.rstrip() for ln in text.strip().splitlines()]
+    # Drop markdown noise that reads badly as plain text.
+    lines = [ln for ln in lines if set(ln.strip()) not in ({"-"}, {"="}, set())]
+    if len(lines) > _MAX_NOTE_LINES:
+        lines = lines[:_MAX_NOTE_LINES] + ["…"]
+    text = "\n".join(lines).strip()
+    if len(text) > _MAX_NOTE_CHARS:
+        text = text[:_MAX_NOTE_CHARS].rstrip() + "…"
+    return text
 
 
 def check(current_version: str | None = None) -> UpdateResult:
@@ -85,9 +122,10 @@ def check(current_version: str | None = None) -> UpdateResult:
     if not tag:
         return UpdateResult("none", url=url, message="No releases published yet.")
     latest = tag.lstrip("vV")
+    notes = announcement(data.get("body"))
     if is_newer(latest, current):
-        return UpdateResult("update", latest=latest, url=url)
-    return UpdateResult("current", latest=latest, url=url)
+        return UpdateResult("update", latest=latest, url=url, notes=notes)
+    return UpdateResult("current", latest=latest, url=url, notes=notes)
 
 
 def check_async(callback, current_version: str | None = None) -> None:

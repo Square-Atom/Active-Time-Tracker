@@ -15,13 +15,21 @@ import updater
 
 
 def show_update(parent, result: updater.UpdateResult) -> None:
-    """Popup announcing a newer release."""
+    """Popup announcing a newer release.
+
+    A release can carry its own message (see `updater.announcement`), which is
+    shown in place of the standard wording — the point being to say something
+    that matters when an update matters. The version line stays either way, so
+    the reader always knows what they're being offered.
+    """
+    body = (f"You're running {config.APP_VERSION}.\n"
+            f"Version {result.latest} is available on GitHub.")
     _dialog(
         parent,
         title="Update available",
         heading="A new version is available",
-        body=(f"You're running {config.APP_VERSION}.\n"
-              f"Version {result.latest} is available on GitHub."),
+        body=body,
+        note=result.notes,
         url=result.url,
         primary="Open download page",
         secondary="Later",
@@ -46,7 +54,8 @@ def show_result(parent, result: updater.UpdateResult) -> None:
             url=updater.RELEASES_PAGE, primary=None, secondary="OK")
 
 
-def _dialog(parent, *, title, heading, body, url, primary, secondary) -> None:
+def _dialog(parent, *, title, heading, body, url, primary, secondary,
+            note: str = "") -> None:
     win = tk.Toplevel(parent)
     win.title(title)
     win.configure(bg=theme.BG)
@@ -60,6 +69,15 @@ def _dialog(parent, *, title, heading, body, url, primary, secondary) -> None:
              font=("Segoe UI Semibold", 13)).pack(anchor="w")
     tk.Label(wrap, text=body, bg=theme.BG, fg=theme.MUTED, justify="left",
              font=("Segoe UI", 10)).pack(anchor="w", pady=(6, 0))
+
+    if note:
+        # The release's own words, set apart so they read as a message rather
+        # than more of the app's chrome. Plain text — never rendered as markup.
+        panel = tk.Frame(wrap, bg=theme.PANEL)
+        panel.pack(anchor="w", fill="x", pady=(10, 0))
+        tk.Label(panel, text=note, bg=theme.PANEL, fg=theme.FG, justify="left",
+                 font=("Segoe UI", 9), wraplength=360, padx=10, pady=8).pack(
+            anchor="w")
 
     link = tk.Label(wrap, text=url, bg=theme.BG, fg=theme.ACCENT,
                     font=("Segoe UI", 8, "underline"), cursor="hand2",
