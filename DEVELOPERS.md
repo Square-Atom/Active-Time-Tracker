@@ -195,7 +195,7 @@ Stored in the per-user data folder (see the README for the path per OS):
 Backups are checked cheaply on the tracker's existing flush cycle, keeping the
 newest `backup_keep` (default 7) days as `backups/data-YYYY-MM-DD.db` plus the
 matching `config-*.json`. Today's file is **rewritten every
-`backup_interval_hours`** (default 1). Backing up only once a day left
+`backup_interval_minutes`** (default 30). Backing up only once a day left
 everything since that morning unprotected — a real incident lost a day's work
 because the only backup predated it.
 

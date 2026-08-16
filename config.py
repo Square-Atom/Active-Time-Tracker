@@ -281,8 +281,9 @@ DEFAULTS = {
                            # off-machine safety (OneDrive, Google Drive, …)
     "backup_keep": 7,
     # Today's backup is refreshed this often, so a loss costs at most this long
-    # rather than everything since the morning.
-    "backup_interval_hours": 1,
+    # rather than everything since the morning. A backup measures ~34ms to a
+    # network drive, so a short interval is cheap.
+    "backup_interval_minutes": 30,
     # Hand-picked bar colours, app key -> "#rrggbb". Anything not listed gets a
     # stable colour derived from its name.
     "app_colors": {},
@@ -308,7 +309,7 @@ class Config:
     backup_enabled: bool = True
     backup_dir: str = ""
     backup_keep: int = 7
-    backup_interval_hours: float = 1
+    backup_interval_minutes: int = 30
     app_colors: dict[str, str] = field(default_factory=dict)
     count_controller_input: bool = True
     count_midi_input: bool = True
@@ -326,7 +327,7 @@ class Config:
             "backup_enabled": self.backup_enabled,
             "backup_dir": self.backup_dir,
             "backup_keep": self.backup_keep,
-            "backup_interval_hours": self.backup_interval_hours,
+            "backup_interval_minutes": self.backup_interval_minutes,
             "app_colors": self.app_colors,
             "count_controller_input": self.count_controller_input,
             "count_midi_input": self.count_midi_input,
@@ -382,12 +383,29 @@ class Config:
             self.file_rules.pop(exe, None)
 
 
+def _backup_minutes(data: dict) -> int:
+    """Backup interval in minutes, carrying over the old hours-based setting."""
+    if "backup_interval_minutes" in data:
+        value = data["backup_interval_minutes"]
+    elif "backup_interval_hours" in data:          # written by <= 1.4.x
+        value = float(data["backup_interval_hours"] or 0) * 60
+    else:
+        value = 30
+    try:
+        value = int(round(float(value)))
+    except (TypeError, ValueError):
+        return 30
+    return max(1, min(value, 24 * 60))
+
+
 def load() -> Config:
     data = dict(DEFAULTS)
+    stored: dict = {}          # only what the file actually said
     if os.path.exists(CONFIG_PATH):
         try:
             with open(CONFIG_PATH, encoding="utf-8") as fh:
-                data.update(json.load(fh))
+                stored = json.load(fh)
+            data.update(stored)
         except (json.JSONDecodeError, OSError):
             pass  # fall back to defaults on a corrupt config
     cfg = Config(
@@ -402,7 +420,9 @@ def load() -> Config:
         backup_enabled=data.get("backup_enabled", True),
         backup_dir=data.get("backup_dir", ""),
         backup_keep=int(data.get("backup_keep", 7) or 7),
-        backup_interval_hours=float(data.get("backup_interval_hours", 1) or 1),
+        # From `stored`, not `data`: the defaults already carry a minutes value,
+        # which would mask an older config that only has the hours one.
+        backup_interval_minutes=_backup_minutes(stored),
         app_colors=data.get("app_colors", {}),
         count_controller_input=data.get("count_controller_input", True),
         count_midi_input=data.get("count_midi_input", True),

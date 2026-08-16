@@ -45,6 +45,22 @@ def test_saves_intervals_and_toggles(settings, cfg, tk_root):
     assert cfg.backup_enabled is False
 
 
+def test_backup_interval_is_saved_in_minutes(settings, cfg):
+    assert settings.backup_every_var.get() == "30", "default shown in the box"
+    settings.backup_every_var.set("15")
+    settings._save()
+    assert cfg.backup_interval_minutes == 15
+
+
+def test_a_silly_backup_interval_is_clamped(settings, cfg):
+    settings.backup_every_var.set("0")
+    settings._save()
+    assert cfg.backup_interval_minutes == 1
+    settings.backup_every_var.set("99999")
+    settings._save()
+    assert cfg.backup_interval_minutes == 1440
+
+
 def test_out_of_range_values_are_clamped(settings, cfg):
     settings.idle_var.set("1")        # below the 2s minimum
     settings.poll_var.set("999")      # above the 10s maximum

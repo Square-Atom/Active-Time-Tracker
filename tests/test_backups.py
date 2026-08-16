@@ -60,7 +60,7 @@ def test_is_due_only_once_a_day(store, tmp_path, today):
 
 def test_todays_backup_is_refreshed_through_the_day(store, tmp_path, today):
     """Backing up once a day left everything since the morning unprotected."""
-    c = _cfg(tmp_path, backup_interval_hours=1)
+    c = _cfg(tmp_path, backup_interval_minutes=60)
     backups.run(store, c, today=today)
     assert backups.is_due(c, today) is False        # just written
 
@@ -69,7 +69,7 @@ def test_todays_backup_is_refreshed_through_the_day(store, tmp_path, today):
 
 
 def test_interval_is_respected(store, tmp_path, today):
-    c = _cfg(tmp_path, backup_interval_hours=6)
+    c = _cfg(tmp_path, backup_interval_minutes=360)
     backups.run(store, c, today=today)
     written = os.path.getmtime(backups._db_path(c, today))
     assert backups.is_due(c, today, now=written + 3600) is False   # 1h later
@@ -77,9 +77,67 @@ def test_interval_is_respected(store, tmp_path, today):
 
 
 def test_zero_interval_means_every_check(store, tmp_path, today):
-    c = _cfg(tmp_path, backup_interval_hours=0)
+    c = _cfg(tmp_path, backup_interval_minutes=0)
     backups.run(store, c, today=today)
     assert backups.is_due(c, today) is True
+
+
+def test_the_default_interval_is_half_an_hour(store, tmp_path, today):
+    c = _cfg(tmp_path)
+    assert c.backup_interval_minutes == 30
+    backups.run(store, c, today=today)
+    written = os.path.getmtime(backups._db_path(c, today))
+    assert backups.is_due(c, today, now=written + 29 * 60) is False
+    assert backups.is_due(c, today, now=written + 30 * 60) is True
+
+
+def test_a_short_interval_is_honoured(store, tmp_path, today):
+    """The tracker checks every minute, so small values have to work."""
+    c = _cfg(tmp_path, backup_interval_minutes=5)
+    backups.run(store, c, today=today)
+    written = os.path.getmtime(backups._db_path(c, today))
+    assert backups.is_due(c, today, now=written + 4 * 60) is False
+    assert backups.is_due(c, today, now=written + 5 * 60) is True
+
+
+# --- carrying the old hours-based setting forward --------------------------
+
+def test_an_existing_hours_setting_is_converted(tmp_path, monkeypatch):
+    """Configs written by 1.4.x and earlier used backup_interval_hours."""
+    import json
+    import config as config_mod
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"backup_interval_hours": 2}))
+    monkeypatch.setattr(config_mod, "CONFIG_PATH", str(path))
+    assert config_mod.load().backup_interval_minutes == 120
+
+
+def test_minutes_win_when_both_are_present(tmp_path, monkeypatch):
+    import json
+    import config as config_mod
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"backup_interval_hours": 6,
+                                "backup_interval_minutes": 15}))
+    monkeypatch.setattr(config_mod, "CONFIG_PATH", str(path))
+    assert config_mod.load().backup_interval_minutes == 15
+
+
+def test_a_nonsense_interval_falls_back_to_the_default(tmp_path, monkeypatch):
+    import json
+    import config as config_mod
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"backup_interval_minutes": "banana"}))
+    monkeypatch.setattr(config_mod, "CONFIG_PATH", str(path))
+    assert config_mod.load().backup_interval_minutes == 30
+
+
+def test_an_absurd_interval_is_clamped(tmp_path, monkeypatch):
+    import json
+    import config as config_mod
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"backup_interval_minutes": 99999}))
+    monkeypatch.setattr(config_mod, "CONFIG_PATH", str(path))
+    assert config_mod.load().backup_interval_minutes == 1440
 
 
 # --- refusing to overwrite a good backup with a worse one ------------------
@@ -153,7 +211,7 @@ def test_the_guard_only_applies_to_the_same_day(store, tmp_path):
 def test_exit_backup_runs_even_when_one_is_not_due(store, tmp_path, today):
     """Quitting is exactly when the newest work is at risk; waiting for the
     next interval would lose everything since the last hourly run."""
-    c = _cfg(tmp_path, backup_interval_hours=24)
+    c = _cfg(tmp_path, backup_interval_minutes=1440)
     backups.run(store, c, today=today)
     assert backups.is_due(c, today) is False        # nowhere near due
 

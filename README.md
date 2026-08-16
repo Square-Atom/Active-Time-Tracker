@@ -97,9 +97,10 @@ Everything is stored locally in a folder you can back up or delete:
 ### Backups
 
 The app copies your data into a `backups` folder there, keeping the last 7 days.
-Today's copy is **refreshed every hour**, so if something goes wrong you lose at
-most an hour rather than everything since the morning. Find it via the tray menu
-→ **Open backups folder**.
+Today's copy is **refreshed every 30 minutes** and again when you quit, so if
+something goes wrong you lose at most half an hour rather than everything since
+the morning. Open the folder from the tray menu → **Open backups folder**, and
+change how often it's written in **Settings → Backup**.
 
 If the live database ever shrinks — reverted by another program, say — the
 automatic backup **refuses to overwrite** the good copy with the smaller one and

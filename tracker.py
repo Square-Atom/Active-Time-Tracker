@@ -18,9 +18,10 @@ import devices
 import sysinfo
 from storage import Storage
 
-# How often to ask "is a backup due?". Well under the shortest sensible
-# backup_interval_hours, so the interval is honoured rather than rounded up.
-_BACKUP_CHECK_SECONDS = 300
+# How often to ask "is a backup due?". Well under the shortest interval a user
+# can set, so the setting is honoured rather than rounded up to this period.
+# The check itself costs ~1ms.
+_BACKUP_CHECK_SECONDS = 60
 
 # Synthetic identity for this app's own windows (dashboard / settings), so they
 # show up as "Active Time Tracker" instead of the host interpreter process.

@@ -22,15 +22,6 @@ import updater
 AUTHOR_EMAIL = "contact@pixelmancer.studio"
 
 
-def _hours(value: float) -> str:
-    """'hour' / '3 hours' / '30 minutes' for the backup-interval hint."""
-    if value <= 0:
-        return "few minutes"
-    if value < 1:
-        return f"{round(value * 60)} minutes"
-    return "hour" if value == 1 else f"{value:g} hours"
-
-
 class SettingsWindow:
     def __init__(self, root: tk.Tk, cfg: config.Config, tracker, on_change=None,
                  storage=None, open_ignore=None, open_restore=None):
@@ -184,12 +175,17 @@ class SettingsWindow:
         self.backup_var = tk.BooleanVar(value=self.cfg.backup_enabled)
         row = ttk.Frame(frm, style="S.TFrame")
         row.pack(fill="x", pady=(4, 0), **pad)
-        ttk.Checkbutton(row, text="Back up my data daily", variable=self.backup_var,
+        ttk.Checkbutton(row, text="Back up my data", variable=self.backup_var,
                         style="S.TCheckbutton", takefocus=False).pack(anchor="w")
-        ttk.Label(frm, text=f"Refreshed every {_hours(self.cfg.backup_interval_hours)}, "
-                            f"keeping the {self.cfg.backup_keep} most recent days. "
-                            "Choose a synced folder (OneDrive, Google Drive…) to keep "
-                            "them off this machine.",
+
+        self.backup_every_var = tk.StringVar(
+            value=str(int(self.cfg.backup_interval_minutes)))
+        self._num_row(frm, "Back up every", self.backup_every_var, "minutes",
+                      f"Also on exit. Keeps the {self.cfg.backup_keep} most recent "
+                      "days; a backup takes a few hundredths of a second.",
+                      from_=1, to=1440, increment=5)
+        ttk.Label(frm, text="Choose a synced folder (OneDrive, Google Drive…) to "
+                            "keep the copies off this machine.",
                   style="SHint.TLabel", wraplength=430, justify="left").pack(
             anchor="w", **pad)
 
@@ -305,14 +301,20 @@ class SettingsWindow:
         updatedialog.show_result(self.win, result)
 
     def _num_row(self, parent, label, var, unit, hint, *, from_, to, increment) -> None:
+        """A "<label> [value] <unit>" row.
+
+        Everything sits together on the left so the row reads as one phrase —
+        pushing the box to the far right left a gap wide enough that the number
+        stopped looking connected to its label.
+        """
         pad = {"padx": 20}
         row = ttk.Frame(parent, style="S.TFrame")
         row.pack(fill="x", pady=(8, 0), **pad)
         ttk.Label(row, text=label, style="S.TLabel").pack(side="left")
-        ttk.Label(row, text=unit, style="SHint.TLabel").pack(side="right")
         ttk.Spinbox(row, textvariable=var, from_=from_, to=to, increment=increment,
-                    width=7, style="S.TSpinbox", justify="right").pack(
-            side="right", padx=(8, 6))
+                    width=6, style="S.TSpinbox", justify="right").pack(
+            side="left", padx=(8, 6))
+        ttk.Label(row, text=unit, style="SHint.TLabel").pack(side="left")
         ttk.Label(parent, text=hint, style="SHint.TLabel").pack(anchor="w", **pad)
 
     def _center(self) -> None:
@@ -347,6 +349,11 @@ class SettingsWindow:
         self.cfg.count_controller_input = bool(self.controller_var.get())
         self.cfg.count_midi_input = bool(self.midi_var.get())
         self.cfg.backup_enabled = bool(self.backup_var.get())
+        try:
+            self.cfg.backup_interval_minutes = int(
+                _clamp(float(self.backup_every_var.get()), 1, 1440))
+        except ValueError:
+            pass                      # keep the previous value on nonsense input
         self._pending_cfg()  # normalises backup_dir ("" when it's the default)
 
         autostart_changed = self.autostart_var.get() != self.cfg.autostart

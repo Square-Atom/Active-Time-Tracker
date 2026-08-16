@@ -56,7 +56,7 @@ def is_due(cfg: config.Config, today: str | None = None,
 
     Backing up only once a day left everything since that morning unprotected —
     a day's work could be lost with nothing to restore from. Today's file is
-    refreshed every `backup_interval_hours` instead, which caps the exposure.
+    refreshed every `backup_interval_minutes` instead, which caps the exposure.
     """
     if not cfg.backup_enabled:
         return False
@@ -68,7 +68,7 @@ def is_due(cfg: config.Config, today: str | None = None,
         age = (now or time.time()) - os.path.getmtime(_db_path(cfg, today))
     except OSError:
         return True                      # today's file is listed but unreadable
-    return age >= max(0.0, float(cfg.backup_interval_hours)) * 3600
+    return age >= max(0, int(cfg.backup_interval_minutes)) * 60
 
 
 def _lost_history(new_path: str, old_path: str) -> str | None:
