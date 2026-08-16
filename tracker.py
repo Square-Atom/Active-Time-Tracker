@@ -110,13 +110,13 @@ class Tracker:
 
             if self._paused.is_set():
                 self.is_active = False
+                self.devices.release()   # let a DAW have the MIDI ports back
                 continue
 
             # Windows counts only keyboard/mouse as input, so a game pad or a
             # MIDI keyboard would look like idleness. Take whichever source was
             # used most recently.
-            self.devices.apply(controllers=self.cfg.count_controller_input,
-                               midi=self.cfg.count_midi_input)
+            self.devices.start()
             idle = min(sysinfo.get_idle_seconds(),
                        self.devices.seconds_since_input())
             if idle > idle_timeout:

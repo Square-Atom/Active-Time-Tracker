@@ -203,21 +203,27 @@ class DeviceActivity:
         self.midi = _MidiWatcher()
         self._last_controller = 0.0
 
-    def apply(self, *, controllers: bool, midi: bool) -> None:
-        """Follow the current settings — called live, so toggles take effect."""
-        if midi and not self.midi.open_ports:
+    def start(self) -> None:
+        """Begin listening. Safe to call again — MIDI ports open only once."""
+        if not self.midi.open_ports:
             self.midi.start()
-        elif not midi and self.midi.open_ports:
+
+    def release(self) -> None:
+        """Hand the MIDI ports back, keeping the watchers alive.
+
+        Single-client ports mean holding one can lock a DAW out of the
+        keyboard. There's no setting for that any more, so pausing the tracker
+        is the way out — and pausing has to actually let go.
+        """
+        if self.midi.open_ports:
             self.midi.stop()
-        self._controllers_on = controllers
 
     def seconds_since_input(self) -> float:
         """Smallest gap since any watched device was used; NEVER if none."""
         newest = 0.0
-        if getattr(self, "_controllers_on", False):
-            if self.controllers.poll():
-                self._last_controller = time.monotonic()
-            newest = max(newest, self._last_controller)
+        if self.controllers.poll():
+            self._last_controller = time.monotonic()
+        newest = max(newest, self._last_controller)
         if self.midi.open_ports:
             newest = max(newest, self.midi.last_input)
         if not newest:

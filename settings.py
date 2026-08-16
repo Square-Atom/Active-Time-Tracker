@@ -108,26 +108,10 @@ class SettingsWindow:
                       "How often focus is checked. Smaller = finer, but slightly more CPU.",
                       from_=0.25, to=10, increment=0.25)
 
-        ttk.Label(frm, text="Windows only counts typing and mouse movement, so "
-                            "these keep the timer running while you play.",
+        ttk.Label(frm, text="Game controllers and MIDI keyboards count as input "
+                            "too, so the timer keeps running while you play.",
                   style="SHint.TLabel", wraplength=430, justify="left").pack(
             anchor="w", pady=(10, 0), **pad)
-        self.controller_var = tk.BooleanVar(value=self.cfg.count_controller_input)
-        row = ttk.Frame(frm, style="S.TFrame")
-        row.pack(fill="x", pady=(2, 0), **pad)
-        ttk.Checkbutton(row, text="Count game controller input",
-                        variable=self.controller_var, style="S.TCheckbutton",
-                        takefocus=False).pack(anchor="w")
-        self.midi_var = tk.BooleanVar(value=self.cfg.count_midi_input)
-        row = ttk.Frame(frm, style="S.TFrame")
-        row.pack(fill="x", **pad)
-        ttk.Checkbutton(row, text="Count MIDI keyboard input",
-                        variable=self.midi_var, style="S.TCheckbutton",
-                        takefocus=False).pack(anchor="w")
-        ttk.Label(frm, text="MIDI opens your input ports to listen. Turn this "
-                            "off if another app can't reach your keyboard.",
-                  style="SHint.TLabel", wraplength=430, justify="left").pack(
-            anchor="w", **pad)
 
         ttk.Separator(frm).pack(fill="x", pady=12, **pad)
         ttk.Label(frm, text="STARTUP", style="SSection.TLabel").pack(anchor="w", **pad)
@@ -346,8 +330,6 @@ class SettingsWindow:
         self.cfg.idle_timeout_seconds = idle
         self.cfg.poll_interval_seconds = poll
         self.cfg.check_updates_on_startup = bool(self.check_updates_var.get())
-        self.cfg.count_controller_input = bool(self.controller_var.get())
-        self.cfg.count_midi_input = bool(self.midi_var.get())
         self.cfg.backup_enabled = bool(self.backup_var.get())
         try:
             self.cfg.backup_interval_minutes = int(

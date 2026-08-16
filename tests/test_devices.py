@@ -72,23 +72,14 @@ def activity(monkeypatch):
 
 
 def test_reports_never_when_nothing_has_happened(activity):
-    activity.apply(controllers=True, midi=False)
+    activity.start()
     assert activity.seconds_since_input() == devices.NEVER
 
 
 def test_controller_input_resets_the_clock(activity, monkeypatch):
-    activity.apply(controllers=True, midi=False)
+    activity.start()
     monkeypatch.setattr(activity.controllers, "poll", lambda: True)
     assert activity.seconds_since_input() < 1.0
-
-
-def test_controller_is_not_polled_when_switched_off(activity, monkeypatch):
-    polled = []
-    monkeypatch.setattr(activity.controllers, "poll",
-                        lambda: polled.append(1) or True)
-    activity.apply(controllers=False, midi=False)
-    assert activity.seconds_since_input() == devices.NEVER
-    assert polled == [], "shouldn't touch the pad when the setting is off"
 
 
 def test_midi_input_resets_the_clock(activity, monkeypatch):
@@ -96,11 +87,10 @@ def test_midi_input_resets_the_clock(activity, monkeypatch):
     monkeypatch.setattr(type(activity.midi), "open_ports",
                         property(lambda self: 1))
     activity.midi.last_input = time.monotonic()
-    activity.apply(controllers=False, midi=False)   # open_ports is faked open
     assert activity.seconds_since_input() < 1.0
 
 
-def test_settings_toggle_opens_and_closes_midi_ports(monkeypatch):
+def test_midi_ports_are_opened_once_and_only_once(monkeypatch):
     act = devices.DeviceActivity()
     calls = []
     monkeypatch.setattr(act.midi, "start", lambda: calls.append("start") or 1)
@@ -109,12 +99,17 @@ def test_settings_toggle_opens_and_closes_midi_ports(monkeypatch):
     monkeypatch.setattr(type(act.midi), "open_ports",
                         property(lambda self: ports["n"]))
 
-    act.apply(controllers=False, midi=True)
+    act.start()
     assert calls == ["start"]
     ports["n"] = 1
-    act.apply(controllers=False, midi=True)         # already open, no churn
+    act.start()                     # called every tick; must not churn ports
+    act.start()
     assert calls == ["start"]
-    act.apply(controllers=False, midi=False)        # turned off -> release
+
+    act.release()                   # pausing hands the ports back
+    assert calls == ["start", "stop"]
+    ports["n"] = 0
+    act.release()                   # also called every tick while paused
     assert calls == ["start", "stop"]
 
 
@@ -125,18 +120,26 @@ def test_everything_degrades_quietly_without_the_windows_apis(monkeypatch):
     act = devices.DeviceActivity()
     assert act.controllers.available is False
     assert act.midi.available is False
-    act.apply(controllers=True, midi=True)          # must not raise
+    act.start()                                     # must not raise
     assert act.seconds_since_input() == devices.NEVER
     assert act.controllers.poll() is False
     act.close()
 
 
-def test_config_round_trips_the_new_settings():
-    import config
-    cfg = config.Config()
-    assert cfg.count_controller_input is True and cfg.count_midi_input is True
-    cfg.count_midi_input = False
-    data = {}
-    cfg.save = lambda: data.update(midi=cfg.count_midi_input)
+def test_an_old_config_with_the_removed_switches_still_loads(tmp_path,
+                                                             monkeypatch):
+    """1.4.x wrote count_controller_input / count_midi_input. Both are gone;
+    a config still carrying them must load, and lose them when next saved."""
+    import json, config
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"idle_timeout_seconds": 12,
+                                "count_controller_input": False,
+                                "count_midi_input": False}))
+    monkeypatch.setattr(config, "CONFIG_PATH", str(path))
+
+    cfg = config.load()
+    assert cfg.idle_timeout_seconds == 12
     cfg.save()
-    assert data["midi"] is False
+    saved = json.loads(path.read_text())
+    assert "count_midi_input" not in saved
+    assert "count_controller_input" not in saved

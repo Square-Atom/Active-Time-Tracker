@@ -147,10 +147,12 @@ matter:
 * **Port exclusivity.** Many Windows MIDI ports are single-client, so holding
   one open could stop a DAW using the keyboard — and since the app autostarts,
   it would usually get there first. Ports already in use are skipped
-  (`MMSYSERR_ALLOCATED`) rather than fought over, each port opens independently
-  so one refusal doesn't lose the rest, and ports are released when the tracker
-  stops or the setting is turned off. The setting exists so a user with a
-  single-client device can opt out.
+  (`MMSYSERR_ALLOCATED`) rather than fought over, and each port opens
+  independently so one refusal doesn't lose the rest. Ports are released when
+  the tracker stops, which means **Pause tracking** (or Quit) is the escape
+  hatch if a DAW started later can't reach the keyboard — there is no setting
+  for it. `DeviceActivity.start()` is called every tick and opens the ports
+  once; it must stay cheap when they're already open.
 
 The ctypes callback object is kept on the watcher: let it be collected and the
 next MIDI message crashes the process.

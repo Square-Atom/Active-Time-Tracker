@@ -8,13 +8,13 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
 ### Added
 - **Game controllers and MIDI keyboards keep the timer running.** Windows only
   treats typing and mouse movement as input, so playing on a pad or a MIDI
-  keyboard counted as sitting idle and the timer stopped. Both are now watched
-  as well. Either can be switched off in **Settings → Tracking**.
+  keyboard counted as sitting idle and the timer stopped. Both are now watched,
+  always — there's nothing to switch on.
 
   Controller polling is read-only and can't disturb a running game. MIDI needs
-  to open your input ports to listen — ports another app already holds are
-  skipped, and the setting is there to turn it off if something can't reach
-  your keyboard.
+  to open your input ports to listen; ports another app already holds are
+  skipped, and **Pause tracking** hands them back if your music software needs
+  one the app got to first.
 - **Backup when you quit**, so closing the app never leaves recent work
   uncaptured.
 - **A release can put its own message in the update popup**, for when an update

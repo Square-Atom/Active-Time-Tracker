@@ -82,9 +82,13 @@ keylogging — and nothing ever leaves your computer.
 
 **Game controllers and MIDI keyboards count too.** Windows treats only typing
 and mouse movement as "input", so playing a game on a pad or a part on a MIDI
-keyboard used to look like sitting idle. Both are now watched as well, so the
-timer keeps running. You can switch either off in **Settings**; turn MIDI off if
-another app can't reach your keyboard.
+keyboard used to look like sitting idle. Both are watched as well, so the timer
+keeps running.
+
+Listening to a MIDI keyboard means opening its port. If another program is
+already using it, the app leaves it alone — but if the app got there first and
+your music software can't reach the keyboard, use **Pause tracking** on the tray
+menu and it hands the ports straight back.
 
 ## Your data
 
