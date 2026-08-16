@@ -1,4 +1,16 @@
 # Build-time dependencies (to produce the standalone app).
 # Install with:  python -m pip install -r requirements-build.txt
 -r requirements.txt
-pyinstaller>=6.10
+
+# Pinned deliberately. 6.22.1 added a check where the onefile bootloader
+# compares the parent process's executable path with its own, and on Windows
+# that comparison fails when the exe sits on a mapped network drive: the app
+# dies at startup with "Security validation failure: parent process has
+# different executable!". v1.5.0 shipped with it and wouldn't run from a
+# network share. 6.22.0 has no such check.
+#
+# Verified by building the same trivial app with both versions and running each
+# from a local disk and a mapped drive: only 6.22.1-from-network fails.
+#
+# Before raising this, build an exe and run it from a mapped network drive.
+pyinstaller==6.22.0

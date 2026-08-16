@@ -3,6 +3,17 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## [1.5.1] — 2026-08-16
+
+### Fixed
+- **The v1.5.0 download wouldn't start from a network drive**, failing with
+  *"Security validation failure: parent process has different executable!"*.
+  The tool that packages the app into a single `.exe` released a new version
+  hours before the v1.5.0 build, and it added a startup check that misfires
+  when the app is run from a mapped network drive. The packaging tool is now
+  pinned to the version that built every release up to 1.4.0. Nothing in the
+  app itself was wrong — 1.5.0 ran fine from a local disk.
+
 ## [1.5.0] — 2026-08-16
 
 ### Added
@@ -192,6 +203,7 @@ First release.
   Windows/macOS/Linux release builds through GitHub Actions.
 - Local SQLite storage — data never leaves the machine.
 
+[1.5.1]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.5.1
 [1.5.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.5.0
 [1.4.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.4.0
 [1.3.1]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.3.1

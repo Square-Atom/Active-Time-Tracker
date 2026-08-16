@@ -61,6 +61,16 @@ python -m pip install -r requirements-build.txt
 
 Build on the OS you're targeting — PyInstaller is not a cross-compiler.
 
+**PyInstaller is pinned** in `requirements-build.txt`, and should stay that way.
+It was unpinned until v1.5.0, whose release build happened to pick up
+PyInstaller 6.22.1 the day it appeared. That version's onefile bootloader
+compares the parent process's executable path against its own, and the check
+fails on Windows when the exe lives on a mapped network drive — the app died on
+launch with *"Security validation failure: parent process has different
+executable!"*. The binaries were fine on a local disk, so nothing in CI caught
+it. When bumping the pin, build an exe and run it **from a mapped network
+drive**, not just from `C:`.
+
 ## Automated releases (GitHub Actions)
 
 You don't have to build by hand. [`.github/workflows/release.yml`](.github/workflows/release.yml)
