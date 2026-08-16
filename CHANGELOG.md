@@ -3,7 +3,7 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
-## [Unreleased]
+## [1.5.0] — 2026-08-16
 
 ### Added
 - **Game controllers and MIDI keyboards keep the timer running.** Windows only
@@ -192,6 +192,7 @@ First release.
   Windows/macOS/Linux release builds through GitHub Actions.
 - Local SQLite storage — data never leaves the machine.
 
+[1.5.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.5.0
 [1.4.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.4.0
 [1.3.1]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.3.1
 [1.3.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.3.0
