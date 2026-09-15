@@ -2,15 +2,15 @@
 # Install with:  python -m pip install -r requirements-build.txt
 -r requirements.txt
 
-# Pinned deliberately. 6.22.1 added a check where the onefile bootloader
-# compares the parent process's executable path with its own, and on Windows
-# that comparison fails when the exe sits on a mapped network drive: the app
-# dies at startup with "Security validation failure: parent process has
-# different executable!". v1.5.0 shipped with it and wouldn't run from a
-# network share. 6.22.0 has no such check.
-#
-# Verified by building the same trivial app with both versions and running each
-# from a local disk and a mapped drive: only 6.22.1-from-network fails.
-#
-# Before raising this, build an exe and run it from a mapped network drive.
-pyinstaller==6.22.0
+# Windows is built with Nuitka (see buildwin.py for why not PyInstaller).
+# Pinned for the same reason PyInstaller is: a packaging tool that changes
+# under a release can break the app, or get it flagged by antivirus again.
+# Before raising it, build, run the exe from a mapped network drive, and look
+# its hash up on VirusTotal.
+nuitka==4.2.1 ; sys_platform == "win32"
+
+# macOS and Linux are still built with PyInstaller. Pinned since v1.5.0 picked
+# up 6.22.1 the day it appeared, whose onefile bootloader refused to start the
+# Windows exe from a mapped network drive ("Security validation failure: parent
+# process has different executable!"). Bump deliberately, testing the build.
+pyinstaller==6.22.0 ; sys_platform != "win32"

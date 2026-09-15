@@ -14,7 +14,7 @@ open it — there's nothing to install.
 
 | Your system | Download | Open it |
 |---|---|---|
-| **Windows** | `ActiveTimeTracker-windows.exe` | Double-click it. |
+| **Windows** | `ActiveTimeTracker-windows.zip` | Unzip it, then double-click `ActiveTimeTracker.exe` inside the `ActiveTimeTracker` folder. Keep the folder together — the exe needs the files beside it. |
 | **macOS** | `ActiveTimeTracker-macos.zip` | Unzip, then open `ActiveTimeTracker.app`. |
 | **Linux** (X11) | `ActiveTimeTracker-linux` | Make it executable, then run it. |
 
@@ -66,7 +66,8 @@ The app can check GitHub for a newer release. In **Settings** you'll find
 **Check for updates now** button.
 
 If a new version exists, a popup links you to the Releases page — you download
-and replace the app yourself. Nothing is downloaded or installed automatically,
+and replace the app yourself. On Windows, quit the app from the tray first,
+then replace the whole `ActiveTimeTracker` folder with the new one. Nothing is downloaded or installed automatically,
 and the check only reads the public release info. An important release may
 include a short note in that popup explaining why it's worth installing.
 

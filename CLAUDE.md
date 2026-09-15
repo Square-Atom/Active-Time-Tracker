@@ -46,6 +46,7 @@ Credit per tick is capped so sleep/wake gaps can't dump a huge chunk onto one ap
 | `restore.py` | "Restore from backup" window (merge / replace, with undo) |
 | `updater.py` | GitHub release check (stdlib urllib, off-thread, never raises) |
 | `updatedialog.py` | "Update available" / check-result popups; links to Releases |
+| `buildwin.py` | Build-time: Windows app via Nuitka (folder + zip, version resource from `APP_VERSION`) |
 
 `dashboard.py` holds the color constants (`BG`, `PANEL`, `FG`, `MUTED`, `ACCENT`);
 `settings.py`, `merges.py`, and `ignoreapps.py` import them as `theme`.
@@ -92,10 +93,9 @@ python main.py --minimized                        # start hidden in tray
 ```
 
 Build a standalone app (no Python needed to run the result):
-- Windows: `build.bat` → `dist\ActiveTimeTracker.exe`
-- macOS/Linux: `./build.sh` → `dist/ActiveTimeTracker(.app)`
-- Requires `requirements-build.txt` (adds PyInstaller). PyInstaller is not a
-  cross-compiler — build on the target OS.
+- Windows: `build.bat` (Nuitka, needs MSVC) → `dist\ActiveTimeTracker\` + `dist\ActiveTimeTracker-windows.zip`
+- macOS/Linux: `./build.sh` (PyInstaller) → `dist/ActiveTimeTracker(.app)`
+- Requires `requirements-build.txt`. Neither packager cross-compiles — build on the target OS.
 
 ## Notes / gotchas
 
@@ -103,6 +103,10 @@ Build a standalone app (no Python needed to run the result):
   be tested on real machines (macOS needs Screen Recording permission for per-file
   window titles; Linux needs X11, not Wayland).
 - `build/`, `dist/`, `app.ico`, and `*.spec` are generated and git-ignored.
+- **Windows is built with Nuitka, not PyInstaller.** Every PyInstaller variant was
+  flagged as a trojan (see DEVELOPERS.md → "Antivirus false positives"). Nuitka
+  doesn't set `sys.frozen` (check `__compiled__` too), and its `sys.executable`
+  is a nonexistent `python.exe`, so use `autostart._app_executable()`.
 - Tests live in `tests/` (pytest): `python -m pytest`. `tests/conftest.py`
   sandboxes the data dir *before* importing project modules, since `config`
   resolves it at import time. Never hard-code today's date (use the `today`

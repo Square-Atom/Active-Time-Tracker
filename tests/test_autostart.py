@@ -5,6 +5,7 @@ mocked. The file-based backends (macOS/Linux) do write, but conftest redirects
 HOME/XDG_CONFIG_HOME into a temp sandbox, so they land there.
 """
 
+import os
 import sys
 
 import autostart
@@ -65,6 +66,32 @@ def test_frozen_builds_launch_the_executable_itself(monkeypatch):
     monkeypatch.setattr(sys, "executable", r"C:\apps\ActiveTimeTracker-1.3.0.exe")
     assert autostart._launch_args() == [
         r"C:\apps\ActiveTimeTracker-1.3.0.exe", "--minimized"]
+
+
+def test_nuitka_builds_launch_the_executable_itself(monkeypatch):
+    """Nuitka sets neither sys.frozen nor a real sys.executable (it names a
+    python.exe that doesn't exist), so both have to be worked around."""
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    monkeypatch.setattr(autostart, "__compiled__", object(), raising=False)
+    monkeypatch.setattr(sys, "executable", r"C:\apps\ActiveTimeTracker\python.exe")
+    monkeypatch.setattr(autostart, "_app_executable",
+                        lambda: r"C:\apps\ActiveTimeTracker\ActiveTimeTracker.exe")
+    assert autostart._launch_args() == [
+        r"C:\apps\ActiveTimeTracker\ActiveTimeTracker.exe", "--minimized"]
+
+
+def test_app_executable_is_the_running_program(monkeypatch):
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    path = autostart._app_executable()
+    # From source that's the interpreter; the point is it's a real file, not
+    # a guess assembled from sys.executable.
+    assert os.path.isfile(path)
+
+
+def test_source_runs_launch_main_py(monkeypatch):
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    assert not autostart._is_packaged()
+    assert autostart._launch_args()[-2].endswith("main.py")
 
 
 def test_matches_current_notices_a_renamed_executable(monkeypatch):

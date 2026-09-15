@@ -3,6 +3,24 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## [1.5.2] — 2026-09-15
+
+### Fixed
+- **Antivirus tools and Chrome flagged the Windows download as a trojan.**
+  Microsoft Defender, Kaspersky and a few others blocked v1.5.1, while most
+  scanners found it clean. The app contains nothing harmful: those verdicts
+  are automated guesses, set off by the way the old packaging tool bundled
+  Python programs into an exe. The Windows app is now built with a different
+  tool that compiles it into an ordinary program, and it scans clean. Its
+  Properties → Details tab now shows its name, publisher and version too.
+
+### Changed
+- **The Windows download is now a zip.** Unzip it and run `ActiveTimeTracker.exe`
+  from inside the `ActiveTimeTracker` folder, keeping the folder together.
+  Coming from 1.5.1 or earlier? Quit the old app, run the new one, and delete
+  the old `.exe`. The new app points *Start with Windows* at itself the first
+  time it runs, and your tracked time and settings carry over untouched.
+
 ## [1.5.1] — 2026-08-16
 
 ### Fixed
@@ -203,6 +221,7 @@ First release.
   Windows/macOS/Linux release builds through GitHub Actions.
 - Local SQLite storage — data never leaves the machine.
 
+[1.5.2]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.5.2
 [1.5.1]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.5.1
 [1.5.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.5.0
 [1.4.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.4.0

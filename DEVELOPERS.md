@@ -48,28 +48,70 @@ and the release build has `needs: test` — a failing suite blocks publishing.
 
 ## Building a standalone app
 
-Produces a single file that runs with no Python installed.
+Produces an app that runs with no Python installed.
 
 ```bash
 python -m pip install -r requirements-build.txt
 ```
 
-* **Windows:** run `build.bat` → `dist\ActiveTimeTracker.exe`
-* **macOS / Linux:** run `./build.sh` →
+* **Windows:** run `build.bat` (Nuitka; needs Visual Studio's C++ build tools) →
+  `dist\ActiveTimeTracker\ActiveTimeTracker.exe` plus
+  `dist\ActiveTimeTracker-windows.zip`, the folder zipped for sharing
+* **macOS / Linux:** run `./build.sh` (PyInstaller) →
   * Linux: `dist/ActiveTimeTracker` (single binary)
   * macOS: `dist/ActiveTimeTracker.app`
 
-Build on the OS you're targeting — PyInstaller is not a cross-compiler.
+Build on the OS you're targeting. Neither tool is a cross-compiler.
 
-**PyInstaller is pinned** in `requirements-build.txt`, and should stay that way.
-It was unpinned until v1.5.0, whose release build happened to pick up
-PyInstaller 6.22.1 the day it appeared. That version's onefile bootloader
-compares the parent process's executable path against its own, and the check
-fails on Windows when the exe lives on a mapped network drive — the app died on
-launch with *"Security validation failure: parent process has different
+**Both packagers are pinned** in `requirements-build.txt`, and should stay that
+way. PyInstaller was unpinned until v1.5.0, whose release build happened to pick
+up 6.22.1 the day it appeared. That version's onefile bootloader failed on
+Windows when the exe lived on a mapped network drive: the app died on launch
+with *"Security validation failure: parent process has different
 executable!"*. The binaries were fine on a local disk, so nothing in CI caught
-it. When bumping the pin, build an exe and run it **from a mapped network
+it. When bumping either pin, build and run the app **from a mapped network
 drive**, not just from `C:`.
+
+### Antivirus false positives (why Windows uses Nuitka)
+
+The v1.5.1 exe (PyInstaller, onefile) was flagged as a trojan by Microsoft
+`Trojan:Win32/Wacatac.B!ml`, Kaspersky `Trojan.Win64.Agent`, Elastic, Bkav and
+SecureAge. Chrome then blocked the download too, since Google Safe Browsing
+draws on the same kind of verdicts. Every signature-based engine found it clean.
+These are machine-learning guesses: an unsigned program that reads window
+titles, watches input idle time and adds itself to startup already resembles
+spyware.
+
+What was tried, each checked on VirusTotal:
+
+| Build | Result |
+|---|---|
+| PyInstaller onefile, stock bootloader (v1.5.1) | 5/69 |
+| PyInstaller onefile, bootloader compiled locally + version resource | 4/63 (Microsoft, Bkav, SecureAge, Zillya) |
+| PyInstaller onedir, same, zipped | zip 0, but **the exe inside 2/70** (Microsoft, SecureAge) |
+| **Nuitka standalone + version resource** | **clean** |
+
+Two lessons from that:
+
+* **A clean zip proves nothing.** Most engines don't unpack archives, and
+  Defender scans the exe once it's extracted. Check the exe itself.
+* **What these engines distrust is PyInstaller's layout,** a launcher with a
+  compressed Python archive appended, whichever bootloader it uses. Nuitka
+  compiles the code to C and links an ordinary executable. `buildwin.py` also
+  gives the exe a version resource (product, publisher, version).
+
+Nuitka differs from PyInstaller in two ways that matter at runtime. It
+doesn't set `sys.frozen`, so "am I a built app?" must also check for
+`__compiled__` (`autostart._is_packaged`). And its `sys.executable` names a
+`python.exe` beside the app **that doesn't exist**, so the app's real path
+comes from `GetModuleFileNameW` (`autostart._app_executable`). Either mistake
+registers a login item that silently launches nothing.
+
+Machine-learning verdicts drift, so a future build can still get flagged. After
+each release, look the **exe's** SHA-256 up on VirusTotal. If an engine flags
+it, report the false positive to that vendor (Microsoft:
+<https://www.microsoft.com/wdsi/filesubmission>). Code signing is the lasting
+cure (SignPath Foundation signs open-source projects for free).
 
 ## Automated releases (GitHub Actions)
 
@@ -113,7 +155,7 @@ text** — never interpreted as markup. An empty body falls back to the popup's
 standard wording. The version line is always shown regardless, so the reader
 knows what's being offered.
 
-The workflow runs on the tag and produces `ActiveTimeTracker-windows.exe`,
+The workflow runs on the tag and produces `ActiveTimeTracker-windows.zip`,
 `ActiveTimeTracker-macos.zip`, and `ActiveTimeTracker-linux`, uploading them to
 the Release for that tag. You can also trigger a test build from the repo's
 **Actions** tab (binaries appear as downloadable *artifacts*). Builds are

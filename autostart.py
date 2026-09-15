@@ -16,10 +16,35 @@ _OLD_WIN_VALUE = "WorkTimeTracker"  # pre-rename registry value to clean up
 _WIN_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 
+def _is_packaged() -> bool:
+    """Running as a built app rather than from source.
+
+    PyInstaller (macOS/Linux builds) sets `sys.frozen`; Nuitka (Windows builds)
+    doesn't, but defines `__compiled__` in every module it compiles.
+    """
+    return bool(getattr(sys, "frozen", False)) or "__compiled__" in globals()
+
+
+def _app_executable() -> str:
+    """Path of the built app's own executable.
+
+    Under Nuitka `sys.executable` names a `python.exe` beside the app that
+    doesn't exist, so registering it would silently launch nothing at login.
+    """
+    if getattr(sys, "frozen", False):
+        return sys.executable
+    if sys.platform == "win32":
+        import ctypes
+        buf = ctypes.create_unicode_buffer(32768)
+        if ctypes.windll.kernel32.GetModuleFileNameW(None, buf, len(buf)):
+            return buf.value
+    return os.path.abspath(sys.argv[0])
+
+
 def _launch_args() -> list[str]:
     """Argv that starts the tracker minimized to the tray."""
-    if getattr(sys, "frozen", False):
-        return [sys.executable, "--minimized"]
+    if _is_packaged():
+        return [_app_executable(), "--minimized"]
     main_py = os.path.join(os.path.dirname(os.path.abspath(__file__)), "main.py")
     exe = sys.executable
     if sys.platform == "win32":
