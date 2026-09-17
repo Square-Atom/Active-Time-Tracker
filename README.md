@@ -41,6 +41,19 @@ Click the tray icon to open the dashboard.
   exactly match the domain).
 * **Trend chart** at the bottom shows your activity over time — drag the divider
   above it to make it taller or shorter.
+* **Timeline** (single days) shows *when* you used each app, from the first
+  moment the tracker saw you until now. Each block is one stretch in one app;
+  idle time is dark, and time with no record (computer off, app closed,
+  tracking paused) is black. Hover a block to see its app and times.
+
+### Notes on the timeline
+* **New note** (left of the timeline) pins a short note to the current time —
+  change the time in the note window if it belongs elsewhere. Double-click the
+  timeline to add one at that moment instead.
+* Hover a note's icon to read it; **click** it for **edit** and **delete**.
+* Set a **hotkey** in **Settings → Timeline** to add a note from anywhere, even
+  with the dashboard closed (Windows only for now). The timeline itself can be
+  switched off there too.
 
 ### Right-click an app
 * **Track files for this app** — turn per-file tracking on or off for that app.
@@ -51,7 +64,8 @@ Click the tray icon to open the dashboard.
 
 ### Tray menu (right-click the clock icon)
 * **Open dashboard** · **Pause / resume tracking**
-* **Settings** — idle timeout, how often it checks, start-with-system, updates
+* **Settings** — idle timeout, how often it checks, start-with-system, updates,
+  backups, and the timeline
 * **App groups** — count several programs as one (e.g. a game and its launcher)
 * **Ignored apps** — manage what's never tracked
 * **Open data folder** · **Quit**
@@ -61,7 +75,7 @@ actually stop tracking.
 
 ## Staying up to date
 
-The app can check GitHub for a newer release. In **Settings** you'll find
+The app can check GitHub for a newer release. In **Settings → General** you'll find
 **Automatically check for updates on startup** (on by default) and a
 **Check for updates now** button.
 

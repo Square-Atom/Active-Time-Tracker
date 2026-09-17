@@ -15,6 +15,7 @@ import time
 import backups
 import config
 import devices
+import storage as storage_mod
 import sysinfo
 from storage import Storage
 
@@ -98,6 +99,10 @@ class Tracker:
             now = time.monotonic()
             delta = now - last
             last = now
+            # The timeline needs wall-clock times. The span ends now and covers
+            # the same capped credit, so a sleep/wake gap stays a gap.
+            wall = time.time()
+            span_start = wall - min(delta, max_credit)
 
             if now - last_flush >= flush_every:
                 self.storage.flush()
@@ -123,14 +128,14 @@ class Tracker:
                 self.is_active = False
                 self.current_app_name = ""
                 self.current_file = ""
+                self.storage.add_span(storage_mod.IDLE, span_start, wall)
                 continue
 
             win = sysinfo.get_foreground_window()
-            if win is None or not win.exe:
+            if win is None or not win.exe or win.exe in self.cfg.ignore_apps:
+                # Present, but nothing we name: an ignored app stays anonymous.
                 self.is_active = False
-                continue
-            if win.exe in self.cfg.ignore_apps:
-                self.is_active = False
+                self.storage.add_span(storage_mod.UNTRACKED, span_start, wall)
                 continue
 
             if win.pid == self._own_pid:
@@ -150,6 +155,8 @@ class Tracker:
                 file=file,
                 seconds=credit,
             )
+            self.storage.add_span(storage_mod.ACTIVE, span_start, wall,
+                                  app=app_key, app_name=app_name)
             self.is_active = True
             self.current_app_name = app_name
             self.current_file = file

@@ -1,8 +1,8 @@
 """Settings window.
 
-A small, extensible dialog for adjusting tracker behaviour. Today it exposes the
-idle timeout, the sample interval, and the start-with-Windows toggle. Add new
-rows in `_build` (and read them in `_save`) to grow it over time.
+A tabbed dialog for adjusting tracker behaviour: General (tracking, startup,
+updates), Ignored apps, Backup, Timeline and About. Add rows in the matching
+`_build_*` method (and read them in `_save`) to grow it over time.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import autostart
 import backups
 import config
 import dashboard as theme  # reuse the dashboard's colour constants
+import hotkeys
 import sysinfo
 import updatedialog
 import updater
@@ -24,7 +25,8 @@ AUTHOR_EMAIL = "contact@pixelmancer.studio"
 
 class SettingsWindow:
     def __init__(self, root: tk.Tk, cfg: config.Config, tracker, on_change=None,
-                 storage=None, open_ignore=None, open_restore=None):
+                 storage=None, open_ignore=None, open_restore=None,
+                 apply_hotkey=None):
         self.root = root
         self.cfg = cfg
         self.tracker = tracker
@@ -32,6 +34,8 @@ class SettingsWindow:
         self.storage = storage
         self.open_ignore_cb = open_ignore
         self.open_restore_cb = open_restore
+        # apply_hotkey(spec) -> bool: registers the note hotkey ("" = none).
+        self.apply_hotkey_cb = apply_hotkey
 
         self.win = tk.Toplevel(root)
         self.win.title("Settings — Active Time Tracker")
@@ -80,18 +84,53 @@ class SettingsWindow:
                         foreground=theme.FG, arrowsize=13)
         style.map("S.TCombobox", fieldbackground=[("readonly", theme.PANEL)],
                   foreground=[("readonly", theme.FG)])
+        # The clam theme outlines tabs and the page in near-white; tone the
+        # outlines down to the panel colours.
+        edges = {"bordercolor": "#3a3c52", "lightcolor": theme.BG,
+                 "darkcolor": theme.BG}
+        style.configure("S.TNotebook", background=theme.BG, **edges)
+        style.configure("S.TNotebook.Tab", background=theme.PANEL,
+                        foreground=theme.MUTED, padding=(12, 5),
+                        font=("Segoe UI", 9), focuscolor=theme.BG, **edges)
+        style.map("S.TNotebook.Tab",
+                  background=[("selected", theme.BG), ("active", "#2d2e40")],
+                  foreground=[("selected", theme.FG)])
 
     # -- layout -----------------------------------------------------------
 
     def _build(self) -> None:
         pad = {"padx": 20}
-        frm = ttk.Frame(self.win, style="S.TFrame")
-        frm.pack(fill="both", expand=True, pady=16)
+        outer = ttk.Frame(self.win, style="S.TFrame")
+        outer.pack(fill="both", expand=True, pady=16)
 
-        ttk.Label(frm, text="Settings", style="STitle.TLabel").pack(anchor="w", **pad)
-        ttk.Label(frm, text="Changes apply immediately.", style="SHint.TLabel").pack(
+        ttk.Label(outer, text="Settings", style="STitle.TLabel").pack(anchor="w", **pad)
+        ttk.Label(outer, text="Changes apply immediately.", style="SHint.TLabel").pack(
             anchor="w", pady=(0, 10), **pad)
 
+        self.tabs = ttk.Notebook(outer, style="S.TNotebook", takefocus=False)
+        self.tabs.pack(fill="both", expand=True, **pad)
+
+        def tab(title):
+            page = ttk.Frame(self.tabs, style="S.TFrame", padding=(0, 12, 0, 4))
+            self.tabs.add(page, text=title)
+            return page
+
+        self._build_general(tab("General"))
+        self._build_ignored(tab("Ignored apps"))
+        self._build_backup(tab("Backup"))
+        self._build_timeline(tab("Timeline"))
+        self._build_about(tab("About"))
+
+        # Buttons
+        btns = ttk.Frame(outer, style="S.TFrame")
+        btns.pack(fill="x", pady=(14, 0), **pad)
+        ttk.Button(btns, text="Save", style="Save.TButton",
+                   command=self._save).pack(side="right")
+        ttk.Button(btns, text="Cancel", style="Cancel.TButton",
+                   command=self.close).pack(side="right", padx=(0, 8))
+
+    def _build_general(self, frm) -> None:
+        pad = {"padx": 20}
         ttk.Label(frm, text="TRACKING", style="SSection.TLabel").pack(anchor="w", **pad)
 
         # Idle timeout
@@ -125,15 +164,6 @@ class SettingsWindow:
                   style="SHint.TLabel").pack(anchor="w", **pad)
 
         ttk.Separator(frm).pack(fill="x", pady=12, **pad)
-        ttk.Label(frm, text="IGNORED APPS", style="SSection.TLabel").pack(anchor="w", **pad)
-        ttk.Label(frm, text="Apps that are never tracked (e.g. games, launchers).",
-                  style="SHint.TLabel").pack(anchor="w", **pad)
-        row = ttk.Frame(frm, style="S.TFrame")
-        row.pack(fill="x", pady=(6, 0), **pad)
-        ttk.Button(row, text="Manage ignored apps…", style="SSmall.TButton",
-                   command=self._open_ignore).pack(side="left")
-
-        ttk.Separator(frm).pack(fill="x", pady=12, **pad)
         ttk.Label(frm, text="UPDATES", style="SSection.TLabel").pack(anchor="w", **pad)
 
         self.check_updates_var = tk.BooleanVar(value=self.cfg.check_updates_on_startup)
@@ -153,7 +183,22 @@ class SettingsWindow:
         self.update_status = ttk.Label(row, text="", style="SHint.TLabel")
         self.update_status.pack(side="left", padx=(10, 0))
 
-        ttk.Separator(frm).pack(fill="x", pady=12, **pad)
+    def _build_ignored(self, frm) -> None:
+        pad = {"padx": 20}
+        ttk.Label(frm, text="IGNORED APPS", style="SSection.TLabel").pack(anchor="w", **pad)
+        ttk.Label(frm, text="Apps that are never tracked (e.g. games, launchers).",
+                  style="SHint.TLabel").pack(anchor="w", **pad)
+        ttk.Label(frm, text="Their time isn't counted, and the timeline shows it "
+                            "as \"Not tracked\" without naming the app.",
+                  style="SHint.TLabel", wraplength=430, justify="left").pack(
+            anchor="w", **pad)
+        row = ttk.Frame(frm, style="S.TFrame")
+        row.pack(fill="x", pady=(8, 0), **pad)
+        ttk.Button(row, text="Manage ignored apps…", style="SSmall.TButton",
+                   command=self._open_ignore).pack(side="left")
+
+    def _build_backup(self, frm) -> None:
+        pad = {"padx": 20}
         ttk.Label(frm, text="BACKUP", style="SSection.TLabel").pack(anchor="w", **pad)
 
         self.backup_var = tk.BooleanVar(value=self.cfg.backup_enabled)
@@ -193,7 +238,44 @@ class SettingsWindow:
         ttk.Button(row, text="Restore from backup…", style="SSmall.TButton",
                    command=self._open_restore).pack(side="left")
 
+    def _build_timeline(self, frm) -> None:
+        pad = {"padx": 20}
+        ttk.Label(frm, text="TIMELINE", style="SSection.TLabel").pack(anchor="w", **pad)
+
+        self.timeline_var = tk.BooleanVar(value=self.cfg.timeline_enabled)
+        row = ttk.Frame(frm, style="S.TFrame")
+        row.pack(fill="x", pady=(4, 0), **pad)
+        ttk.Checkbutton(row, text="Show the timeline in the Day view",
+                        variable=self.timeline_var, style="S.TCheckbutton",
+                        takefocus=False).pack(anchor="w")
+        ttk.Label(frm, text="Which app had focus through the day, with idle time "
+                            "and notes. Click a note to edit or delete it; "
+                            "double-click the bar to add one at that time.",
+                  style="SHint.TLabel", wraplength=430, justify="left").pack(
+            anchor="w", **pad)
+
         ttk.Separator(frm).pack(fill="x", pady=12, **pad)
+        ttk.Label(frm, text="NOTES", style="SSection.TLabel").pack(anchor="w", **pad)
+
+        self.hotkey_var = tk.StringVar(value=self.cfg.note_hotkey)
+        row = ttk.Frame(frm, style="S.TFrame")
+        row.pack(fill="x", pady=(8, 0), **pad)
+        ttk.Label(row, text="New note hotkey", style="S.TLabel").pack(side="left")
+        self.hotkey_entry = HotkeyEntry(row, self.hotkey_var)
+        self.hotkey_entry.pack(side="left", padx=(8, 6))
+        ttk.Button(row, text="Clear", style="SSmall.TButton",
+                   command=lambda: self.hotkey_var.set("")).pack(side="left")
+        if sysinfo.HOTKEYS_SUPPORTED:
+            hint = ("Click the box and press a combination, e.g. Ctrl+Alt+N. "
+                    "It works anywhere, even with the dashboard closed. "
+                    "Leave it empty for no hotkey.")
+        else:
+            hint = "Global hotkeys are only available on Windows for now."
+        ttk.Label(frm, text=hint, style="SHint.TLabel", wraplength=430,
+                  justify="left").pack(anchor="w", **pad)
+
+    def _build_about(self, frm) -> None:
+        pad = {"padx": 20}
         ttk.Label(frm, text="ABOUT", style="SSection.TLabel").pack(anchor="w", **pad)
         ttk.Label(frm, text=f"Active Time Tracker {config.APP_VERSION} — "
                             "created by Hau Tran, Pixelmancer Studio.",
@@ -207,14 +289,6 @@ class SettingsWindow:
                          font=("Segoe UI", 8, "underline"), cursor="hand2")
         email.pack(side="left", padx=(4, 0))
         email.bind("<Button-1>", lambda e: self._mail_author())
-
-        # Buttons
-        btns = ttk.Frame(frm, style="S.TFrame")
-        btns.pack(fill="x", pady=(18, 0), **pad)
-        ttk.Button(btns, text="Save", style="Save.TButton",
-                   command=self._save).pack(side="right")
-        ttk.Button(btns, text="Cancel", style="Cancel.TButton",
-                   command=self.close).pack(side="right", padx=(0, 8))
 
     def _open_ignore(self) -> None:
         if self.open_ignore_cb:
@@ -327,6 +401,23 @@ class SettingsWindow:
         idle = _clamp(idle, 2, 3600)
         poll = _clamp(poll, 0.25, 10)
 
+        # The hotkey first: if another app owns it, stay open to pick another.
+        timeline_on = bool(self.timeline_var.get())
+        hotkey = hotkeys.normalize(self.hotkey_var.get())
+        wanted = hotkey if timeline_on else ""
+        current = self.cfg.note_hotkey if self.cfg.timeline_enabled else ""
+        if wanted != current and self.apply_hotkey_cb is not None:
+            if not self.apply_hotkey_cb(wanted):
+                self.tabs.select(3)
+                messagebox.showwarning(
+                    "Hotkey unavailable",
+                    f"{hotkey} is already used by Windows or another app. "
+                    "Please choose a different combination.",
+                    parent=self.win)
+                return
+        self.cfg.timeline_enabled = timeline_on
+        self.cfg.note_hotkey = hotkey
+
         self.cfg.idle_timeout_seconds = idle
         self.cfg.poll_interval_seconds = poll
         self.cfg.check_updates_on_startup = bool(self.check_updates_var.get())
@@ -369,3 +460,76 @@ def _clean_num(v) -> float | int:
     """Show whole numbers without a trailing .0."""
     f = float(v)
     return int(f) if f == int(f) else f
+
+
+class HotkeyEntry(tk.Entry):
+    """A box that records the key combination pressed while it has focus.
+
+    Typing doesn't insert text: modifiers build up as they're held, and the
+    first ordinary key completes the combination. Backspace or Delete on its
+    own clears it; Escape (or leaving the box) keeps the previous value.
+    """
+
+    PROMPT = "Press keys…"
+
+    def __init__(self, parent, var: tk.StringVar):
+        self.var = var
+        self._shown = tk.StringVar(value=var.get())
+        super().__init__(parent, textvariable=self._shown, width=18,
+                         bg=theme.PANEL, fg=theme.FG, readonlybackground=theme.PANEL,
+                         insertbackground=theme.PANEL, borderwidth=0,
+                         highlightthickness=1, highlightbackground="#3a3c52",
+                         highlightcolor=theme.ACCENT, font=("Segoe UI", 10),
+                         justify="center", cursor="hand2")
+        self.configure(state="readonly")
+        self._held: set[str] = set()
+        var.trace_add("write", lambda *a: self._shown.set(var.get()))
+        self.bind("<FocusIn>", self._on_focus_in)
+        self.bind("<FocusOut>", self._on_focus_out)
+        self.bind("<KeyPress>", self._on_key)
+        self.bind("<KeyRelease>", self._on_release)
+        self.bind("<Button-1>", lambda e: self.focus_set())
+
+    def _preview(self) -> None:
+        mods = [m for m in hotkeys.MODIFIERS if m in self._held]
+        self._shown.set("+".join(mods) + "+…" if mods else self.PROMPT)
+
+    def _on_focus_in(self, _event=None) -> None:
+        self._held.clear()
+        self._preview()
+
+    def _on_focus_out(self, _event=None) -> None:
+        self._held.clear()
+        self._shown.set(self.var.get())
+
+    def _finish(self) -> str:
+        self._held.clear()
+        self.master.focus_set()        # leaving the box shows the result
+        return "break"
+
+    def _on_key(self, event):
+        mod = hotkeys.modifier_for_keysym(event.keysym)
+        if mod:
+            self._held.add(mod)
+            self._preview()
+            return "break"
+        if event.keysym == "Tab":
+            return None                # keep keyboard navigation working
+        if not self._held and event.keysym == "Escape":
+            return self._finish()
+        if not self._held and event.keysym in ("BackSpace", "Delete"):
+            self.var.set("")
+            return self._finish()
+        key = hotkeys.key_from_tk(event.keysym, event.keycode)
+        spec = hotkeys.normalize(hotkeys.format_spec(self._held, key)) if key else ""
+        if spec:
+            self.var.set(spec)
+            return self._finish()
+        return "break"                 # not a usable combination; keep waiting
+
+    def _on_release(self, event):
+        mod = hotkeys.modifier_for_keysym(event.keysym)
+        if mod:
+            self._held.discard(mod)
+            self._preview()
+        return "break"

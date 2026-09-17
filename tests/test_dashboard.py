@@ -539,3 +539,37 @@ def test_right_clicking_a_file_targets_its_app(dash, tk_root, store, today):
     file_row = next(r for r in dash._rows if r["kind"] == "file")
     assert dash._row_at(types.SimpleNamespace(y=file_row["y0"] + 2)) is file_row
     assert file_row["app"] == "code.exe"
+
+
+# --- timeline --------------------------------------------------------------
+
+def test_timeline_shows_only_for_a_single_day(dash, tk_root):
+    dash.range.set_mode("day")
+    dash.refresh()
+    assert dash.timeline.winfo_manager() == "pack"
+    dash.range.set_mode("week")
+    dash.refresh()
+    assert dash.timeline.winfo_manager() == ""
+
+
+def test_timeline_can_be_switched_off(dash, cfg):
+    cfg.timeline_enabled = False
+    dash.range.set_mode("day")
+    dash.refresh()
+    assert dash.timeline.winfo_manager() == ""
+
+
+def test_timeline_follows_the_day_being_viewed(dash):
+    dash.range.set_mode("day")
+    dash._nav(-1)
+    assert dash.timeline.day == dt.date.today() - dt.timedelta(days=1)
+
+
+def test_hotkey_note_goes_on_todays_timeline(dash, store, today, monkeypatch):
+    import timeline
+    dash.range.set_mode("day")
+    dash._nav(-3)                      # looking at another day
+    monkeypatch.setattr(timeline, "ask_note",
+                        lambda parent, day, *a, **k: (f"{day} 08:00:00", "hi"))
+    dash.new_note()
+    assert store.notes_for_day(today) == {f"{today} 08:00:00": "hi"}

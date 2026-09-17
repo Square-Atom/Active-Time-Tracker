@@ -2,7 +2,8 @@
 
 Shows focus time for a selected range (Today / This Week / This Month), broken
 down by application, with a per-file breakdown for the selected app, a bar chart,
-and a daily-trend chart for multi-day ranges. Charts are hand-drawn on a Canvas
+a daily-trend chart for multi-day ranges, and a focus timeline with notes for
+single days. Charts are hand-drawn on a Canvas
 to keep dependencies minimal.
 """
 
@@ -15,6 +16,7 @@ import tkinter as tk
 from tkinter import ttk
 
 import config
+import timeline
 from storage import Storage
 
 # --- theme ---------------------------------------------------------------
@@ -384,6 +386,13 @@ class Dashboard:
         self.trend.pack(fill="both", expand=True)
         self.trend.bind("<Configure>", lambda e: self._draw_trend())
 
+        # --- timeline (day view only; packed in refresh) -------------------
+        self.timeline = timeline.TimelineView(
+            self.root, self.storage,
+            theme={"bg": BG, "panel": PANEL, "fg": FG, "muted": MUTED,
+                   "accent": ACCENT, "hover": ROW_HOVER},
+            color_for=self._color_for)
+
         self._data_apps: list[dict] = []
         self._data_files: dict[str, list[dict]] = {}   # app key -> its files
         self._data_trend: dict[str, float] = {}
@@ -722,7 +731,38 @@ class Dashboard:
                 self._remember_trend_height()
                 self.main_paned.forget(self.trend_frame)
 
+        self._update_timeline(cfg, merge_map, ignore)
         self._update_status()
+
+    def _timeline_enabled(self) -> bool:
+        cfg = self.tracker.cfg if self.tracker else None
+        return cfg.timeline_enabled if cfg else True
+
+    def _update_timeline(self, cfg, merge_map, ignore) -> None:
+        """Show the timeline under a single day, when it's switched on."""
+        wanted = self.range.mode == "day" and self._timeline_enabled()
+        shown = self.timeline.winfo_manager() == "pack"
+        if not wanted:
+            if shown:
+                self.timeline.close_popups()
+                self.timeline.pack_forget()
+            return
+        if not shown:
+            self.timeline.pack(side="bottom", fill="x", padx=16, pady=(0, 14),
+                               before=self.main_paned)
+        self.timeline.load(self.range.anchor, merge_map, ignore)
+
+    def new_note(self) -> None:
+        """Add a note at the current time, e.g. from the global hotkey.
+
+        Always today's timeline, whatever day the dashboard is showing.
+        """
+        if not self._timeline_enabled():
+            return
+        self.timeline.day = dt.date.today()
+        self.timeline.new_note()
+        if self._visible:
+            self.refresh()
 
     def _load_files(self) -> None:
         """Fetch per-file rows for the expanded apps only (lazy, not for all)."""

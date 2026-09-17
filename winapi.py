@@ -116,3 +116,84 @@ def get_foreground_window() -> WindowInfo | None:
     exe = _process_name(pid.value)
 
     return WindowInfo(hwnd=int(hwnd), title=title, exe=exe, pid=pid.value)
+
+
+# --- global hotkey -------------------------------------------------------
+# RegisterHotKey asks Windows to post us a message for one key combination.
+# Unlike a keyboard hook it never sees any other keystroke.
+
+MOD_ALT = 0x0001
+MOD_CONTROL = 0x0002
+MOD_SHIFT = 0x0004
+MOD_WIN = 0x0008
+MOD_NOREPEAT = 0x4000
+WM_HOTKEY = 0x0312
+WM_QUIT = 0x0012
+PM_NOREMOVE = 0x0000
+
+user32.RegisterHotKey.restype = wintypes.BOOL
+user32.RegisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int, wintypes.UINT, wintypes.UINT]
+user32.UnregisterHotKey.restype = wintypes.BOOL
+user32.UnregisterHotKey.argtypes = [wintypes.HWND, ctypes.c_int]
+user32.GetMessageW.restype = wintypes.BOOL
+user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND,
+                               wintypes.UINT, wintypes.UINT]
+user32.PeekMessageW.restype = wintypes.BOOL
+user32.PeekMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND,
+                                wintypes.UINT, wintypes.UINT, wintypes.UINT]
+user32.PostThreadMessageW.restype = wintypes.BOOL
+user32.PostThreadMessageW.argtypes = [wintypes.DWORD, wintypes.UINT,
+                                      wintypes.WPARAM, wintypes.LPARAM]
+kernel32.GetCurrentThreadId.restype = wintypes.DWORD
+kernel32.GetCurrentThreadId.argtypes = []
+
+
+class GlobalHotkey:
+    """One system-wide hotkey, served by a thread with its own message loop.
+
+    A hotkey belongs to the thread that registered it, so registering,
+    waiting and unregistering all happen on that thread.
+    """
+
+    _ID = 1
+
+    def __init__(self, modifiers: int, vk: int, callback):
+        import threading
+        self._modifiers = modifiers | MOD_NOREPEAT
+        self._vk = vk
+        self._callback = callback
+        self._ready = threading.Event()
+        self._ok = False
+        self._thread_id = 0
+        self._thread = threading.Thread(target=self._run, name="hotkey", daemon=True)
+
+    def start(self) -> bool:
+        """Register the hotkey. False if another app already owns it."""
+        self._thread.start()
+        self._ready.wait(timeout=2)
+        return self._ok
+
+    def stop(self) -> None:
+        if self._thread_id and self._thread.is_alive():
+            user32.PostThreadMessageW(self._thread_id, WM_QUIT, 0, 0)
+            self._thread.join(timeout=2)
+
+    def _run(self) -> None:
+        import logging
+        msg = wintypes.MSG()
+        # Makes sure the thread has a message queue before anyone posts to it.
+        user32.PeekMessageW(ctypes.byref(msg), None, 0, 0, PM_NOREMOVE)
+        self._thread_id = kernel32.GetCurrentThreadId()
+        self._ok = bool(user32.RegisterHotKey(None, self._ID, self._modifiers, self._vk))
+        self._ready.set()
+        if not self._ok:
+            return
+        try:
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                if msg.message == WM_HOTKEY:
+                    try:
+                        self._callback()
+                    except Exception:
+                        logging.exception("Hotkey handler failed")
+        finally:
+            user32.UnregisterHotKey(None, self._ID)

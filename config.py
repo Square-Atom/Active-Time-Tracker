@@ -287,6 +287,10 @@ DEFAULTS = {
     # Hand-picked bar colours, app key -> "#rrggbb". Anything not listed gets a
     # stable colour derived from its name.
     "app_colors": {},
+    # Day view timeline (focus blocks + notes) and the global "new note" hotkey,
+    # e.g. "Ctrl+Alt+N". "" = no hotkey.
+    "timeline_enabled": True,
+    "note_hotkey": "",
 }
 
 MERGE_PREFIX = "merge::"  # synthetic app key for a merged group
@@ -307,6 +311,8 @@ class Config:
     backup_keep: int = 7
     backup_interval_minutes: int = 30
     app_colors: dict[str, str] = field(default_factory=dict)
+    timeline_enabled: bool = True
+    note_hotkey: str = ""
 
     def save(self) -> None:
         data = {
@@ -323,6 +329,8 @@ class Config:
             "backup_keep": self.backup_keep,
             "backup_interval_minutes": self.backup_interval_minutes,
             "app_colors": self.app_colors,
+            "timeline_enabled": self.timeline_enabled,
+            "note_hotkey": self.note_hotkey,
         }
         tmp = CONFIG_PATH + ".tmp"
         with open(tmp, "w", encoding="utf-8") as fh:
@@ -416,6 +424,8 @@ def load() -> Config:
         # which would mask an older config that only has the hours one.
         backup_interval_minutes=_backup_minutes(stored),
         app_colors=data.get("app_colors", {}),
+        timeline_enabled=bool(data.get("timeline_enabled", True)),
+        note_hotkey=str(data.get("note_hotkey") or ""),
     )
     return cfg
 

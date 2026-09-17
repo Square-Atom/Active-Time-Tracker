@@ -31,14 +31,16 @@ Credit per tick is capped so sleep/wake gaps can't dump a huge chunk onto one ap
 |------|----------------|
 | `main.py` | Entry point: tray icon (pystray), single-instance guard, wiring, tk mainloop |
 | `tracker.py` | Background poll loop; credits active seconds; reads config live |
-| `sysinfo.py` | **Cross-platform** foreground-window, idle-time, single-instance, open-folder (dispatches by `sys.platform`) |
+| `sysinfo.py` | **Cross-platform** foreground-window, idle-time, single-instance, open-folder, global hotkey (dispatches by `sys.platform`) |
 | `devices.py` | Game-pad (XInput) and MIDI activity — input Windows doesn't count as input |
 | `winapi.py` | Windows ctypes backend (used by `sysinfo` on win32 only) |
 | `autostart.py` | Launch-at-login: Windows registry / macOS LaunchAgent / Linux .desktop |
 | `storage.py` | SQLite; buffered writes; read-time aggregation (app/file/day, merges, ignore) |
 | `config.py` | Paths, defaults, friendly names, file-parsing rules, merge/track helpers |
 | `dashboard.py` | tkinter dashboard: ranges, app list, chart, trend; theme constants live here |
-| `settings.py` | Settings window (idle, sample interval, autostart, → ignored apps) |
+| `timeline.py` | Day view timeline strip (focus blocks, idle/off, notes) and the note editor |
+| `hotkeys.py` | "New note" hotkey: text form (`Ctrl+Alt+N`), key capture, registration via `sysinfo` |
+| `settings.py` | Tabbed Settings window (General, Ignored apps, Backup, Timeline, About) |
 | `ignoreapps.py` | Ignored-apps manager window |
 | `merges.py` | "App groups" window (merge several exes into one) |
 | `appicon.py` | Clock icon shared by tray, window, and the built .exe |
@@ -63,6 +65,20 @@ Stored per-user (not in the repo):
 by `(day, app, file)`; `file=''` means app-level. Raw per-exe rows are always
 stored; **merges and ignores are applied at read time** in `storage.py`
 (non-destructive, retroactive, reversible).
+
+**Timeline** — table `timeline(day, start, end, state, app, app_name)`, epoch
+seconds, one row per uninterrupted block (`state` = `active` / `idle` /
+`untracked`; ignored apps are recorded as `untracked`). The tracker calls
+`Storage.add_span` each tick; contiguous ticks extend the open block, which is
+written on flush and then updated in place. Gaps between blocks are "no record".
+Blocks never cross midnight. Merges/ignores are applied at read time in
+`timeline.build_blocks`.
+
+**Notes** — table `notes(ts, text)`, `ts` = local `"YYYY-MM-DD HH:MM:SS"`. Both
+tables are carried by backups and restores.
+
+**Hotkey** — `RegisterHotKey` on its own message-loop thread (`winapi.GlobalHotkey`),
+not a keyboard hook. Windows only; elsewhere `sysinfo.register_hotkey` returns None.
 
 **File detection** — `config.parse_file` reads the window title using per-app
 rules in `DEFAULT_FILE_RULES` (+ user overrides in `config.json` `file_rules`):

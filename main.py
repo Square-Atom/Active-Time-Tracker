@@ -25,6 +25,7 @@ import appicon
 import autostart
 import backups
 import config
+import hotkeys
 import sysinfo
 import updatedialog
 import updater
@@ -135,6 +136,18 @@ def main() -> None:
 
     tracker.start()
 
+    # Global "new note" hotkey. It fires on its own thread, so hop to Tk.
+    note_hotkey = hotkeys.HotkeyManager(lambda: root.after(0, dashboard.new_note))
+
+    def apply_hotkey(spec: str) -> bool:
+        ok = note_hotkey.set(spec)
+        if not ok:
+            logging.warning("Could not register the note hotkey %r", spec)
+        return ok
+
+    if cfg.timeline_enabled and cfg.note_hotkey:
+        apply_hotkey(cfg.note_hotkey)
+
     # --- settings / groups windows (single instance each) -----------------
     settings_holder: dict[str, SettingsWindow | None] = {"win": None}
     merges_holder: dict[str, MergesWindow | None] = {"win": None}
@@ -176,7 +189,8 @@ def main() -> None:
             return
         settings_holder["win"] = SettingsWindow(
             root, cfg, tracker, on_change=on_settings_changed, storage=storage,
-            open_ignore=open_ignore, open_restore=open_restore)
+            open_ignore=open_ignore, open_restore=open_restore,
+            apply_hotkey=apply_hotkey)
 
     def open_merges():
         existing = merges_holder["win"]
@@ -282,6 +296,7 @@ def main() -> None:
     try:
         root.mainloop()
     finally:
+        note_hotkey.clear()
         shutdown()
         try:
             icon.stop()

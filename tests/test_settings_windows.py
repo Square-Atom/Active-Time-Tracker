@@ -278,3 +278,71 @@ def test_groups_window_saves_and_drops_empties(tk_root, store, cfg, today):
     win._save()
 
     assert cfg.merges == [{"name": "Godot", "members": ["godot.exe"]}]
+
+
+# --- timeline tab ------------------------------------------------------------
+
+def test_settings_are_grouped_into_tabs(settings):
+    tabs = [settings.tabs.tab(t, "text") for t in settings.tabs.tabs()]
+    assert tabs == ["General", "Ignored apps", "Backup", "Timeline", "About"]
+
+
+def test_timeline_is_on_and_hotkey_empty_by_default(settings):
+    assert settings.timeline_var.get() is True
+    assert settings.hotkey_var.get() == ""
+
+
+def test_timeline_settings_are_saved(settings, cfg):
+    settings.timeline_var.set(False)
+    settings.hotkey_var.set("alt+ctrl+n")
+    settings._save()
+    assert cfg.timeline_enabled is False
+    assert cfg.note_hotkey == "Ctrl+Alt+N"
+
+
+def test_a_taken_hotkey_keeps_the_window_open(tk_root, cfg, store, monkeypatch):
+    import tkinter.messagebox as mb
+    warned = []
+    monkeypatch.setattr(mb, "showwarning", lambda *a, **k: warned.append(a))
+    applied = []
+    win = SettingsWindow(tk_root, cfg, types.SimpleNamespace(cfg=cfg),
+                         storage=store,
+                         apply_hotkey=lambda spec: applied.append(spec) or False)
+    win.hotkey_var.set("Ctrl+Alt+N")
+    win._save()
+    assert applied == ["Ctrl+Alt+N"] and warned
+    assert cfg.note_hotkey == ""
+    assert win.win.winfo_exists()
+    win.close()
+
+
+def test_the_hotkey_is_released_when_the_timeline_is_turned_off(tk_root, cfg, store):
+    cfg.note_hotkey = "Ctrl+Alt+N"
+    applied = []
+    win = SettingsWindow(tk_root, cfg, types.SimpleNamespace(cfg=cfg),
+                         storage=store,
+                         apply_hotkey=lambda spec: applied.append(spec) or True)
+    win.timeline_var.set(False)
+    win._save()
+    assert applied == [""]
+    assert cfg.note_hotkey == "Ctrl+Alt+N", "remembered for when it's back on"
+
+
+def test_hotkey_box_records_a_combination(settings):
+    entry = settings.hotkey_entry
+
+    def key(keysym, keycode=0):
+        return types.SimpleNamespace(keysym=keysym, keycode=keycode)
+
+    entry._on_focus_in()
+    entry._on_key(key("Control_L"))
+    entry._on_key(key("Shift_L"))
+    assert entry._shown.get() == "Ctrl+Shift+…"
+    entry._on_key(key("k"))
+    assert settings.hotkey_var.get() == "Ctrl+Shift+K"
+
+    entry._on_focus_in()
+    entry._on_key(key("n"))                 # no modifier: not accepted
+    assert settings.hotkey_var.get() == "Ctrl+Shift+K"
+    entry._on_key(key("BackSpace"))
+    assert settings.hotkey_var.get() == ""

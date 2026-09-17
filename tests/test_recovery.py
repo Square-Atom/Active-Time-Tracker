@@ -31,10 +31,16 @@ def _populate(path, days, seconds=3600):
 
 
 def _corrupt(path):
-    """Scribble over the middle of the file, past the header."""
-    size = os.path.getsize(path)
+    """Scribble over the second page — the activity table, created first.
+
+    Aiming at a fixed page rather than the middle of the file: with several
+    small tables, the middle can be the unused tail of an empty page, where
+    zeros aren't damage at all.
+    """
     with open(path, "r+b") as fh:
-        fh.seek(size // 2)
+        header = fh.read(18)
+        page_size = int.from_bytes(header[16:18], "big") or 65536
+        fh.seek(page_size)
         fh.write(b"\x00" * 2048)
 
 

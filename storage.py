@@ -15,6 +15,18 @@ from collections import defaultdict
 
 import config
 
+# Timeline states. `untracked` is focus we deliberately don't name (an ignored
+# app, or no window at all), drawn like idle rather than as a gap.
+ACTIVE = "active"
+IDLE = "idle"
+UNTRACKED = "untracked"
+
+# Ticks closer together than this join into one continuous block. A wider gap
+# is a hole in the record (app closed, paused, asleep) and stays empty.
+SEGMENT_JOIN_SECONDS = 1.0
+
+NOTE_TS_FORMAT = "%Y-%m-%d %H:%M:%S"   # notes are keyed by local date + time
+
 REPLACE = "replace"   # discard current data, use the backup's
 MERGE = "merge"       # keep whichever side recorded more per (day, app, file)
 
@@ -83,6 +95,10 @@ class Storage:
         self._lock = threading.Lock()
         # (day, app, app_name, file) -> accumulated seconds not yet written
         self._buffer: dict[tuple[str, str, str, str], float] = defaultdict(float)
+        # The timeline block being extended tick by tick, plus finished blocks
+        # not yet written. `id` is its row once the open block has been saved.
+        self._segment: dict | None = None
+        self._closed_segments: list[dict] = []
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         # Keep the -wal sidecar from growing without bound. A large stale WAL
@@ -107,6 +123,35 @@ class Storage:
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_activity_day ON activity(day)"
             )
+            # One row per uninterrupted block of the same focus, in epoch
+            # seconds. `day` is the local day the block belongs to.
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS timeline (
+                    day      TEXT NOT NULL,
+                    start    REAL NOT NULL,
+                    end      REAL NOT NULL,
+                    state    TEXT NOT NULL,
+                    app      TEXT NOT NULL DEFAULT '',
+                    app_name TEXT NOT NULL DEFAULT ''
+                )
+                """
+            )
+            self._conn.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_block"
+                " ON timeline(start, state, app)"
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_timeline_day ON timeline(day)"
+            )
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS notes (
+                    ts   TEXT PRIMARY KEY,
+                    text TEXT NOT NULL
+                )
+                """
+            )
 
     # -- writing ----------------------------------------------------------
 
@@ -115,9 +160,67 @@ class Storage:
         with self._lock:
             self._buffer[(day, app, app_name, file)] += seconds
 
-    def _write(self, items) -> None:
-        """Persist buffered (key, seconds) pairs in one transaction."""
+    def add_span(self, state: str, start: float, end: float,
+                 app: str = "", app_name: str = "") -> None:
+        """Record that [start, end] (epoch seconds) was spent in `state`.
+
+        Contiguous spans with the same focus grow one block rather than adding
+        a row per tick. A block never crosses local midnight, so each day's
+        timeline stands on its own.
+        """
+        if end <= start:
+            return
+        with self._lock:
+            while True:
+                piece_end = min(end, _next_midnight(start))
+                self._extend_segment(state, start, piece_end, app, app_name)
+                if piece_end >= end:
+                    break
+                start = piece_end
+
+    def _extend_segment(self, state, start, end, app, app_name) -> None:
+        seg = self._segment
+        if (seg and seg["state"] == state and seg["app"] == app
+                and seg["day"] == _local_day(start)
+                and abs(start - seg["end"]) <= SEGMENT_JOIN_SECONDS):
+            seg["end"] = max(seg["end"], end)
+            seg["app_name"] = app_name
+            return
+        if seg:
+            self._closed_segments.append(seg)
+        self._segment = {"id": None, "day": _local_day(start), "start": start,
+                         "end": end, "state": state, "app": app,
+                         "app_name": app_name}
+
+    def _write_segments(self, segments) -> None:
+        for seg in segments:
+            if seg["id"] is None:
+                self._conn.execute(
+                    """
+                    INSERT INTO timeline (day, start, end, state, app, app_name)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(start, state, app) DO UPDATE SET
+                        end = MAX(timeline.end, excluded.end)
+                    """,
+                    (seg["day"], seg["start"], seg["end"], seg["state"],
+                     seg["app"], seg["app_name"]),
+                )
+                # lastrowid isn't reliable after an upsert that updated.
+                seg["id"] = self._conn.execute(
+                    "SELECT rowid FROM timeline WHERE start = ? AND state = ?"
+                    " AND app = ?", (seg["start"], seg["state"], seg["app"]),
+                ).fetchone()[0]
+            else:
+                self._conn.execute(
+                    "UPDATE timeline SET end = MAX(end, ?), app_name = ?"
+                    " WHERE rowid = ?",
+                    (seg["end"], seg["app_name"], seg["id"]),
+                )
+
+    def _write(self, items, segments=()) -> None:
+        """Persist buffered (key, seconds) pairs and timeline blocks together."""
         with self._conn:
+            self._write_segments(segments)
             for (day, app, app_name, file), seconds in items:
                 self._conn.execute(
                     """
@@ -132,11 +235,19 @@ class Storage:
 
     def flush(self) -> None:
         with self._lock:
-            if not self._buffer:
+            if not (self._buffer or self._closed_segments or self._segment):
                 return
             items = list(self._buffer.items())
             self._buffer.clear()
-        self._write(items)
+            segments = self._closed_segments
+            self._closed_segments = []
+            if self._segment:
+                # The open block is written too, then updated in place, so a
+                # crash loses at most one flush interval of it.
+                segments.append(self._segment)
+            # Written under the lock: this assigns the open block its row id,
+            # and a concurrent flush must not insert it a second time.
+            self._write(items, segments)
 
     def close(self) -> None:
         self.flush()
@@ -176,11 +287,40 @@ class Storage:
                             app_name = excluded.app_name
                         """
                     )
+                    self._restore_extras(mode)
                     rows = self._conn.execute(
                         "SELECT COUNT(*) FROM activity").fetchone()[0]
             finally:
                 self._conn.execute("DETACH DATABASE backup")
         return rows
+
+    def _restore_extras(self, mode: str) -> None:
+        """Timeline and notes, from backups made since those existed.
+
+        Replace takes the backup's as they are. Merge adds what's missing and,
+        for a note present on both sides, keeps the current text.
+        """
+        tables = {r[0] for r in self._conn.execute(
+            "SELECT name FROM backup.sqlite_master WHERE type='table'")}
+        if mode == REPLACE:
+            self._conn.execute("DELETE FROM timeline")
+            self._conn.execute("DELETE FROM notes")
+            if self._segment:
+                self._segment["id"] = None   # its row is gone; re-insert it
+        if "timeline" in tables:
+            self._conn.execute(
+                """
+                INSERT INTO timeline (day, start, end, state, app, app_name)
+                SELECT day, start, end, state, app, app_name
+                FROM backup.timeline WHERE true
+                ON CONFLICT(start, state, app) DO UPDATE SET
+                    end = MAX(timeline.end, excluded.end)
+                """
+            )
+        if "notes" in tables:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO notes (ts, text)"
+                " SELECT ts, text FROM backup.notes")
 
     def backup_to(self, path: str) -> None:
         """Write a consistent copy of the database to `path`.
@@ -190,11 +330,7 @@ class Storage:
         data.db would miss them (and could catch a half-written state). This
         runs against the live connection and produces a single clean file.
         """
-        with self._lock:
-            buffered = list(self._buffer.items())
-            self._buffer.clear()
-        if buffered:
-            self._write(buffered)
+        self.flush()
         dest = sqlite3.connect(path)
         try:
             self._conn.backup(dest)
@@ -302,6 +438,64 @@ class Storage:
             """
         )
         return [(r[0], r[1]) for r in cur]
+
+    # -- timeline ---------------------------------------------------------
+
+    def timeline_for_day(self, day: str) -> list[dict]:
+        """The day's blocks, oldest first: {start, end, state, app, app_name}."""
+        self.flush()
+        cur = self._conn.execute(
+            """
+            SELECT start, end, state, app, app_name FROM timeline
+            WHERE day = ? ORDER BY start
+            """,
+            (day,),
+        )
+        return [{"start": r[0], "end": r[1], "state": r[2], "app": r[3],
+                 "app_name": r[4]} for r in cur]
+
+    # -- notes ------------------------------------------------------------
+
+    def notes_for_day(self, day: str) -> dict[str, str]:
+        """{"YYYY-MM-DD HH:MM:SS": text} for one day, in time order."""
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT ts, text FROM notes WHERE ts LIKE ? ORDER BY ts",
+                (f"{day} %",),
+            )
+            return dict(cur.fetchall())
+
+    def save_note(self, ts: str, text: str, replaces: str | None = None) -> str:
+        """Store a note at `ts` and return the key it was saved under.
+
+        `replaces` is the note's old key when editing, so moving a note to
+        another time doesn't leave the original behind. A different note
+        already at `ts` is never overwritten; the new one moves a second later.
+        """
+        when = dt.datetime.strptime(ts, NOTE_TS_FORMAT)
+        with self._lock, self._conn:
+            if replaces:
+                self._conn.execute("DELETE FROM notes WHERE ts = ?", (replaces,))
+            while self._conn.execute(
+                    "SELECT 1 FROM notes WHERE ts = ?", (ts,)).fetchone():
+                when += dt.timedelta(seconds=1)
+                ts = when.strftime(NOTE_TS_FORMAT)
+            self._conn.execute("INSERT INTO notes (ts, text) VALUES (?, ?)",
+                               (ts, text))
+        return ts
+
+    def delete_note(self, ts: str) -> None:
+        with self._lock, self._conn:
+            self._conn.execute("DELETE FROM notes WHERE ts = ?", (ts,))
+
+
+def _local_day(epoch: float) -> str:
+    return dt.datetime.fromtimestamp(epoch).date().isoformat()
+
+
+def _next_midnight(epoch: float) -> float:
+    day = dt.datetime.fromtimestamp(epoch).date() + dt.timedelta(days=1)
+    return dt.datetime.combine(day, dt.time()).timestamp()
 
 
 def today_str() -> str:

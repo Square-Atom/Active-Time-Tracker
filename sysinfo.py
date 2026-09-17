@@ -1,5 +1,5 @@
 """Cross-platform system access: foreground window, idle time, single-instance
-lock, and "open a folder". Each platform has its own implementation; everything
+lock, "open a folder", and a global hotkey (Windows only for now). Each platform has its own implementation; everything
 degrades safely (returns no window / zero idle) if an optional dependency is
 missing, so the app still launches.
 
@@ -56,6 +56,33 @@ if _PLATFORM == "win32":
         _win_mutex = kernel32.CreateMutexW(None, False, f"{app_id}_SingleInstance_Mutex")
         ERROR_ALREADY_EXISTS = 183
         return ctypes.get_last_error() != ERROR_ALREADY_EXISTS
+
+    HOTKEYS_SUPPORTED = True
+
+    _WIN_NAMED_KEYS = {
+        "Space": 0x20, "PageUp": 0x21, "PageDown": 0x22, "End": 0x23,
+        "Home": 0x24, "Left": 0x25, "Up": 0x26, "Right": 0x27, "Down": 0x28,
+        "Insert": 0x2D, "Delete": 0x2E,
+    }
+    _WIN_MODIFIERS = {"Alt": 0x1, "Ctrl": 0x2, "Shift": 0x4, "Win": 0x8}
+
+    def register_hotkey(modifiers, key: str, callback):
+        """Call `callback` (on a background thread) whenever the combination
+        is pressed anywhere. Returns a handle with `stop()`, or None if the
+        combination can't be registered (e.g. another app owns it)."""
+        if len(key) == 1 and key.isalnum():
+            vk = ord(key.upper())
+        elif key[:1] == "F" and key[1:].isdigit() and 1 <= int(key[1:]) <= 24:
+            vk = 0x6F + int(key[1:])
+        else:
+            vk = _WIN_NAMED_KEYS.get(key)
+        if vk is None:
+            return None
+        mods = 0
+        for m in modifiers:
+            mods |= _WIN_MODIFIERS.get(m, 0)
+        handle = winapi.GlobalHotkey(mods, vk, callback)
+        return handle if handle.start() else None
 
 
 # ======================================================================
@@ -114,6 +141,11 @@ elif _PLATFORM == "darwin":
 
     def single_instance(app_id: str) -> bool:
         return _posix_single_instance(app_id)
+
+    HOTKEYS_SUPPORTED = False
+
+    def register_hotkey(modifiers, key: str, callback):
+        return None   # not implemented here yet; the setting just does nothing
 
 
 # ======================================================================
@@ -205,6 +237,11 @@ else:
 
     def single_instance(app_id: str) -> bool:
         return _posix_single_instance(app_id)
+
+    HOTKEYS_SUPPORTED = False
+
+    def register_hotkey(modifiers, key: str, callback):
+        return None   # not implemented here yet; the setting just does nothing
 
 
 # ----------------------------------------------------------------------

@@ -3,6 +3,25 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## [Unreleased]
+
+### Added
+- **A timeline for each day.** Under the Day view, a bar shows which app had
+  focus and when, from the first moment the tracker saw you until now. Idle
+  time is dark and time with no record at all — computer off, app closed,
+  tracking paused — is black. Hover a block for its app and times. Only time
+  tracked from this version on appears on the timeline.
+- **Notes.** Pin a short note to a moment in the day with **New note**, or
+  double-click the timeline. Hover a note to read it; click it to edit or
+  delete it. Notes are part of your backups.
+- **A hotkey for new notes** (Windows), set in **Settings → Timeline**. It works
+  anywhere, even with the dashboard closed. None is set by default.
+
+### Changed
+- **Settings are organised into tabs**: General (tracking, startup, updates),
+  Ignored apps, Backup, Timeline and About. The timeline can be switched off
+  in the Timeline tab.
+
 ## [1.5.2] — 2026-09-15
 
 ### Fixed
