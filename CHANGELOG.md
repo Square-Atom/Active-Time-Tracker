@@ -3,7 +3,7 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
-## [Unreleased]
+## [1.6.0] — 2026-09-17
 
 ### Added
 - **A timeline for each day.** Under the Day view, a bar shows which app had
@@ -240,6 +240,7 @@ First release.
   Windows/macOS/Linux release builds through GitHub Actions.
 - Local SQLite storage — data never leaves the machine.
 
+[1.6.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.6.0
 [1.5.2]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.5.2
 [1.5.1]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.5.1
 [1.5.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.5.0
