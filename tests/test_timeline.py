@@ -245,6 +245,20 @@ def test_hotkey_manager_registers_and_swaps(monkeypatch):
 
 # --- tracker --------------------------------------------------------------
 
+def _wait_until(condition, what: str, timeout: float = 10.0) -> None:
+    """Wait for the tracker thread to get somewhere.
+
+    Fixed sleeps looked fine here and then failed on a loaded CI runner, where
+    half a second can pass without a single tick being scheduled.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if condition():
+            return
+        time.sleep(0.02)
+    raise AssertionError(f"timed out waiting for {what}")
+
+
 def test_the_tracker_records_focus_and_idle_blocks(store, monkeypatch, today):
     import config
     import sysinfo
@@ -259,15 +273,26 @@ def test_the_tracker_records_focus_and_idle_blocks(store, monkeypatch, today):
     cfg.save = lambda: None
     tr = tracker_mod.Tracker(store, cfg)
     tr.start()
-    time.sleep(0.5)
-    idle["seconds"] = 999
-    time.sleep(0.5)
-    tr.stop()
+    try:
+        _wait_until(lambda: tr.is_active, "the window to be picked up")
+        idle["seconds"] = 999
+        _wait_until(lambda: not tr.is_active, "the idle timeout to bite")
+        _wait_until(lambda: any(b["state"] == IDLE
+                               for b in store.timeline_for_day(today)),
+                    "the idle block to be written")
+    finally:
+        tr.stop()
 
     blocks = store.timeline_for_day(today)
-    assert [(b["state"], b["app"]) for b in blocks] == [
-        (ACTIVE, "code.exe"), (IDLE, "")]
-    assert blocks[0]["end"] == pytest.approx(blocks[1]["start"], abs=0.05)
+    # Focus first, then idle. Not necessarily one focus block: ticks more than
+    # a second apart are a hole in the record, which is the point of them.
+    assert (blocks[-1]["state"], blocks[-1]["app"]) == (IDLE, "")
+    assert blocks[:-1] and {(b["state"], b["app"]) for b in blocks[:-1]} == {
+        (ACTIVE, "code.exe")}
+    # Blocks butt up against each other rather than overlapping; they only
+    # fall apart when a tick was late, since credit per tick is capped.
+    assert blocks[-2]["end"] <= blocks[-1]["start"] + 0.001
+    assert blocks[-1]["start"] - blocks[-2]["end"] < 2.0
 
 
 # --- the view -------------------------------------------------------------
