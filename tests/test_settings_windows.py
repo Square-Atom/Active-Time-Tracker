@@ -353,7 +353,33 @@ def test_deleting_a_tag_asks_first(tagwin, tk_root, cfg, monkeypatch):
 
 def test_settings_are_grouped_into_tabs(settings):
     tabs = [settings.tabs.tab(t, "text") for t in settings.tabs.tabs()]
-    assert tabs == ["General", "Ignored apps", "Backup", "Timeline", "About"]
+    assert tabs == ["General", "Ignored apps", "Backup", "Timeline",
+                    "Notifications", "About"]
+
+
+# --- notifications tab -------------------------------------------------------
+
+def test_focus_reminders_are_off_by_default(settings):
+    assert settings.notify_var.get() is False
+    assert settings.notify_first_var.get() == "5"
+    assert settings.notify_repeat_var.get() == "15"
+
+
+def test_focus_reminder_settings_are_saved(settings, cfg):
+    settings.notify_var.set(True)
+    settings.notify_first_var.set("3")
+    settings.notify_repeat_var.set("0")          # below the minimum
+    settings._save()
+    assert cfg.notify_enabled is True
+    assert cfg.notify_first_minutes == 3
+    assert cfg.notify_repeat_minutes == 1, "clamped rather than refused"
+
+
+def test_a_nonsense_reminder_time_keeps_the_saved_one(settings, cfg):
+    cfg.notify_repeat_minutes = 15
+    settings.notify_repeat_var.set("later")
+    settings._save()
+    assert cfg.notify_repeat_minutes == 15
 
 
 def test_timeline_is_on_and_hotkey_empty_by_default(settings):

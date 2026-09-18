@@ -1,5 +1,6 @@
 """Cross-platform system access: foreground window, idle time, single-instance
-lock, "open a folder", and a global hotkey (Windows only for now). Each platform has its own implementation; everything
+lock, "open a folder", the desktop work area, and a global hotkey (Windows
+only for now). Each platform has its own implementation; everything
 degrades safely (returns no window / zero idle) if an optional dependency is
 missing, so the app still launches.
 
@@ -47,6 +48,9 @@ if _PLATFORM == "win32":
     def open_path(path: str) -> None:
         import os
         os.startfile(path)  # noqa: S606 - intended
+
+    def work_area() -> tuple[int, int, int, int] | None:
+        return winapi.work_area()
 
     def single_instance(app_id: str) -> bool:
         """True if we're the only instance (holds a named mutex for our life)."""
@@ -138,6 +142,9 @@ elif _PLATFORM == "darwin":
 
     def open_path(path: str) -> None:
         subprocess.Popen(["open", path])
+
+    def work_area() -> tuple[int, int, int, int] | None:
+        return None       # callers fall back to the full screen
 
     def single_instance(app_id: str) -> bool:
         return _posix_single_instance(app_id)
@@ -234,6 +241,9 @@ else:
 
     def open_path(path: str) -> None:
         subprocess.Popen(["xdg-open", path])
+
+    def work_area() -> tuple[int, int, int, int] | None:
+        return None       # callers fall back to the full screen
 
     def single_instance(app_id: str) -> bool:
         return _posix_single_instance(app_id)

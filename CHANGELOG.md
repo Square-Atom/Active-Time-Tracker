@@ -25,6 +25,13 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
   remembers which you picked. The right-click **Tags** menu is always
   newest-first, so what you were just using is at the top.
 
+- **Focus reminders** (off by default, in **Settings → Notifications**). Stay in
+  one app long enough and a small popup appears in the corner: *"You have been
+  focusing on Aseprite for 5 minutes."* Click it to write a note about what
+  you're doing, or let it fade. You choose how long the first reminder takes
+  and how often it repeats. Idle time and Active Time Tracker's own windows
+  pause that clock rather than restarting it; another app starts it over.
+
 ### Changed
 - **App groups are gone, replaced by tags.** Grouping several executables into
   one app row turned out to be a clumsy way to answer "where did this project's

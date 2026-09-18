@@ -57,6 +57,20 @@ Click the tray icon to open the dashboard.
   with the dashboard closed (Windows only for now). The timeline itself can be
   switched off there too.
 
+### Focus reminders
+Off unless you turn them on, in **Settings → Notifications**.
+
+* After **5 minutes** in the same app (your choice), a small popup appears in
+  the corner: *"You have been focusing on Aseprite for 5 minutes."*
+* It keeps reminding you every **15 minutes** (also your choice) while you stay
+  in that app.
+* **Click it** to write a note about what you're doing — the note window opens
+  in the middle of the screen. Ignore it and it fades away on its own; the
+  **✕** dismisses it without a note.
+* Only real time in the app counts. Going idle, or switching to Active Time
+  Tracker itself, pauses the count instead of restarting it; moving to a
+  different app starts it over.
+
 ### Tags
 Tags let you ask "how much time went into *this project*" when the answer is
 spread across several apps, files and websites.
@@ -95,7 +109,7 @@ with the same names.
 ### Tray menu (right-click the clock icon)
 * **Open dashboard** · **Pause / resume tracking**
 * **Settings** — idle timeout, how often it checks, start-with-system, updates,
-  backups, and the timeline
+  backups, the timeline, and focus reminders
 * **Tags** — group apps, files and websites, and see the time per tag
 * **Ignored apps** — manage what's never tracked
 * **Open data folder** · **Quit**

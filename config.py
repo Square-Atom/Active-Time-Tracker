@@ -292,6 +292,11 @@ DEFAULTS = {
     # Hand-picked bar colours, app key -> "#rrggbb". Anything not listed gets a
     # stable colour derived from its name.
     "app_colors": {},
+    # Focus reminders: after this long in one app, and then every so often,
+    # a click-to-add-a-note popup. Off unless asked for.
+    "notify_enabled": False,
+    "notify_first_minutes": 5,
+    "notify_repeat_minutes": 15,
     # Day view timeline (focus blocks + notes) and the global "new note" hotkey,
     # e.g. "Ctrl+Alt+N". "" = no hotkey.
     "timeline_enabled": True,
@@ -393,6 +398,9 @@ class Config:
     backup_keep: int = 7
     backup_interval_minutes: int = 30
     app_colors: dict[str, str] = field(default_factory=dict)
+    notify_enabled: bool = False
+    notify_first_minutes: float = 5
+    notify_repeat_minutes: float = 15
     timeline_enabled: bool = True
     note_hotkey: str = ""
 
@@ -412,6 +420,9 @@ class Config:
             "backup_keep": self.backup_keep,
             "backup_interval_minutes": self.backup_interval_minutes,
             "app_colors": self.app_colors,
+            "notify_enabled": self.notify_enabled,
+            "notify_first_minutes": self.notify_first_minutes,
+            "notify_repeat_minutes": self.notify_repeat_minutes,
             "timeline_enabled": self.timeline_enabled,
             "note_hotkey": self.note_hotkey,
         }
@@ -595,6 +606,9 @@ def load() -> Config:
         # which would mask an older config that only has the hours one.
         backup_interval_minutes=_backup_minutes(stored),
         app_colors=data.get("app_colors", {}),
+        notify_enabled=bool(data.get("notify_enabled", False)),
+        notify_first_minutes=data.get("notify_first_minutes", 5),
+        notify_repeat_minutes=data.get("notify_repeat_minutes", 15),
         timeline_enabled=bool(data.get("timeline_enabled", True)),
         note_hotkey=str(data.get("note_hotkey") or ""),
     )

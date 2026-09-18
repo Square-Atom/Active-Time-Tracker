@@ -40,7 +40,8 @@ Credit per tick is capped so sleep/wake gaps can't dump a huge chunk onto one ap
 | `dashboard.py` | tkinter dashboard: ranges, app/tag list, chart, trend; theme constants live here |
 | `timeline.py` | Day view timeline strip (focus blocks, idle/off, notes) and the note editor |
 | `hotkeys.py` | "New note" hotkey: text form (`Ctrl+Alt+N`), key capture, registration via `sysinfo` |
-| `settings.py` | Tabbed Settings window (General, Ignored apps, Backup, Timeline, About) |
+| `notifications.py` | Focus reminders: the timing (`FocusWatcher`) and the click-to-add-a-note popup (`Toast`) |
+| `settings.py` | Tabbed Settings window (General, Ignored apps, Backup, Timeline, Notifications, About) |
 | `ignoreapps.py` | Ignored-apps manager window |
 | `tags.py` | Tags window (what each tag holds) + the shared tag-name prompt |
 | `appicon.py` | Clock icon shared by tray, window, and the built .exe |
@@ -76,6 +77,15 @@ Blocks never cross midnight. The ignore list is applied at read time in
 
 **Notes** — table `notes(ts, text)`, `ts` = local `"YYYY-MM-DD HH:MM:SS"`. Both
 tables are carried by backups and restores.
+
+**Focus reminders** — off by default (`notify_enabled`). The tracker feeds
+`notifications.FocusWatcher.tick` only the seconds it credits to a real app, so
+idle time and our own windows neither advance the clock nor reset it; a
+different app resets it. The first reminder comes after `notify_first_minutes`
+and then every `notify_repeat_minutes`, each interval measured from the
+reminder before it. The popup is ours, not a tray balloon: pystray's Windows
+backend reports clicks on the icon, not on a balloon, and the click is the
+point — it opens the note window centred on screen (`ask_note(center=True)`).
 
 **Hotkey** — `RegisterHotKey` on its own message-loop thread (`winapi.GlobalHotkey`),
 not a keyboard hook. Windows only; elsewhere `sysinfo.register_hotkey` returns None.

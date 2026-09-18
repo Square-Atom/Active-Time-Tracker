@@ -1,8 +1,8 @@
 """Settings window.
 
 A tabbed dialog for adjusting tracker behaviour: General (tracking, startup,
-updates), Ignored apps, Backup, Timeline and About. Add rows in the matching
-`_build_*` method (and read them in `_save`) to grow it over time.
+updates), Ignored apps, Backup, Timeline, Notifications and About. Add rows in
+the matching `_build_*` method (and read them in `_save`) to grow it over time.
 """
 
 from __future__ import annotations
@@ -119,6 +119,7 @@ class SettingsWindow:
         self._build_ignored(tab("Ignored apps"))
         self._build_backup(tab("Backup"))
         self._build_timeline(tab("Timeline"))
+        self._build_notifications(tab("Notifications"))
         self._build_about(tab("About"))
 
         # Buttons
@@ -274,6 +275,44 @@ class SettingsWindow:
         ttk.Label(frm, text=hint, style="SHint.TLabel", wraplength=430,
                   justify="left").pack(anchor="w", **pad)
 
+    def _build_notifications(self, frm) -> None:
+        pad = {"padx": 20}
+        ttk.Label(frm, text="FOCUS REMINDERS", style="SSection.TLabel").pack(
+            anchor="w", **pad)
+
+        self.notify_var = tk.BooleanVar(value=self.cfg.notify_enabled)
+        row = ttk.Frame(frm, style="S.TFrame")
+        row.pack(fill="x", pady=(4, 0), **pad)
+        ttk.Checkbutton(row, text="Tell me when I've been in one app a while",
+                        variable=self.notify_var, style="S.TCheckbutton",
+                        takefocus=False).pack(anchor="w")
+        ttk.Label(frm, text="A small popup appears in the corner of the screen. "
+                            "Click it to write a note about what you're doing; "
+                            "ignore it and it fades after a few seconds.",
+                  style="SHint.TLabel", wraplength=430, justify="left").pack(
+            anchor="w", **pad)
+
+        self.notify_first_var = tk.StringVar(
+            value=str(_clean_num(self.cfg.notify_first_minutes)))
+        self._num_row(frm, "First reminder after", self.notify_first_var,
+                      "minutes",
+                      "Counted from the moment you settle into an app.",
+                      from_=1, to=1440, increment=1)
+
+        self.notify_repeat_var = tk.StringVar(
+            value=str(_clean_num(self.cfg.notify_repeat_minutes)))
+        self._num_row(frm, "Then remind me every", self.notify_repeat_var,
+                      "minutes",
+                      "As long as you stay in the same app.",
+                      from_=1, to=1440, increment=1)
+
+        ttk.Label(frm, text="Only time you actually spend in an app counts: going "
+                            "idle, or switching to Active Time Tracker itself, "
+                            "pauses the clock rather than restarting it. Moving "
+                            "to a different app starts it over.",
+                  style="SHint.TLabel", wraplength=430, justify="left").pack(
+            anchor="w", pady=(10, 0), **pad)
+
     def _build_about(self, frm) -> None:
         pad = {"padx": 20}
         ttk.Label(frm, text="ABOUT", style="SSection.TLabel").pack(anchor="w", **pad)
@@ -420,6 +459,11 @@ class SettingsWindow:
 
         self.cfg.idle_timeout_seconds = idle
         self.cfg.poll_interval_seconds = poll
+        self.cfg.notify_enabled = bool(self.notify_var.get())
+        self.cfg.notify_first_minutes = _minutes_field(
+            self.notify_first_var, self.cfg.notify_first_minutes)
+        self.cfg.notify_repeat_minutes = _minutes_field(
+            self.notify_repeat_var, self.cfg.notify_repeat_minutes)
         self.cfg.check_updates_on_startup = bool(self.check_updates_var.get())
         self.cfg.backup_enabled = bool(self.backup_var.get())
         try:
@@ -450,6 +494,14 @@ class SettingsWindow:
         except tk.TclError:
             pass
         self.win.destroy()
+
+
+def _minutes_field(var, current: float) -> float:
+    """A minutes box, clamped to a day; nonsense keeps the saved value."""
+    try:
+        return _clean_num(_clamp(float(var.get()), 1, 1440))
+    except ValueError:
+        return current
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:

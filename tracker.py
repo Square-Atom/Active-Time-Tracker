@@ -31,9 +31,13 @@ OWN_APP_NAME = "Active Time Tracker"
 
 
 class Tracker:
-    def __init__(self, storage: Storage, cfg: config.Config):
+    def __init__(self, storage: Storage, cfg: config.Config, watcher=None):
         self.storage = storage
         self.cfg = cfg
+        # Optional `notifications.FocusWatcher`. It only hears about time spent
+        # in a real app, which is what makes idle time and our own windows
+        # leave the focus reminder's clock alone.
+        self.watcher = watcher
         self.devices = devices.DeviceActivity()
         self._own_pid = os.getpid()
         self._thread: threading.Thread | None = None
@@ -160,6 +164,8 @@ class Tracker:
             self.is_active = True
             self.current_app_name = app_name
             self.current_file = file
+            if self.watcher is not None and app_key != OWN_APP_KEY:
+                self.watcher.tick(app_key, app_name, credit)
 
         self.devices.close()   # hand MIDI ports back when we stop
         self.storage.flush()

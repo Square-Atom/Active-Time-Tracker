@@ -25,7 +25,9 @@ import appicon
 import autostart
 import backups
 import config
+import dashboard as theme
 import hotkeys
+import notifications
 import sysinfo
 import updatedialog
 import updater
@@ -117,7 +119,22 @@ def main() -> None:
     # query rather than failing outright, so it must not be trusted first.
     recovery_note = backups.repair_if_corrupt(cfg)
     storage = Storage()
-    tracker = Tracker(storage, cfg)
+    # The focus reminder needs a window to pop up from, so the toast is built
+    # once the root exists; the watcher only has to know how to reach it.
+    toast_holder: dict = {"toast": None}
+
+    def on_focus_reminder(app_name: str, minutes: int) -> None:
+        """Called from the tracker thread — hop to Tk before touching a window."""
+        toast = toast_holder["toast"]
+        if toast is None:
+            return
+        try:
+            root.after(0, lambda: toast.show(app_name, minutes))
+        except (RuntimeError, tk.TclError):
+            pass          # the UI is on its way out; a reminder can be missed
+
+    tracker = Tracker(storage, cfg,
+                      watcher=notifications.FocusWatcher(cfg, on_focus_reminder))
 
     # Keep the login item in sync with the saved preference — and pointing at
     # wherever this executable now lives, so moving or renaming it doesn't
@@ -133,6 +150,11 @@ def main() -> None:
     _set_window_icon(root)  # same clock as the tray, incl. the taskbar button
     dashboard = Dashboard(root, storage, tracker)
     root.protocol("WM_DELETE_WINDOW", dashboard.hide)  # X hides to tray
+    toast_holder["toast"] = notifications.Toast(
+        root,
+        theme={"bg": theme.BG, "panel": theme.PANEL, "fg": theme.FG,
+               "muted": theme.MUTED, "accent": theme.ACCENT},
+        on_click=lambda: dashboard.new_note(center=True))
 
     tracker.start()
 

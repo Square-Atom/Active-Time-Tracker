@@ -95,6 +95,39 @@ def test_config_changes_apply_without_restart(store, monkeypatch):
     assert "chrome.exe" in apps
 
 
+class _Watcher:
+    """Stands in for notifications.FocusWatcher."""
+
+    def __init__(self):
+        self.ticks = []
+
+    def tick(self, app_key, app_name, seconds):
+        self.ticks.append((app_key, app_name, seconds))
+
+
+def test_focus_time_is_reported_for_the_reminder_clock(store, monkeypatch):
+    _fake_window(monkeypatch, exe="aseprite.exe", title="hero.aseprite")
+    watcher = _Watcher()
+    _run_briefly(tracker_mod.Tracker(store, _cfg(), watcher=watcher))
+    assert watcher.ticks
+    assert {t[0] for t in watcher.ticks} == {"aseprite.exe"}
+
+
+def test_our_own_window_never_touches_the_reminder_clock(store, monkeypatch):
+    """Nor does idle time — neither reaches the watcher at all."""
+    import os
+    _fake_window(monkeypatch, exe="pythonw.exe", title="Active Time Tracker",
+                 pid=os.getpid())
+    watcher = _Watcher()
+    _run_briefly(tracker_mod.Tracker(store, _cfg(), watcher=watcher))
+    assert watcher.ticks == []
+
+    _fake_window(monkeypatch, exe="aseprite.exe", title="hero.aseprite", idle=999)
+    _run_briefly(tracker_mod.Tracker(store, _cfg(idle_timeout_seconds=10),
+                                     watcher=watcher))
+    assert watcher.ticks == []
+
+
 def test_credit_per_tick_is_capped(store, monkeypatch):
     """A sleep/wake gap must not dump a huge block onto whatever was focused."""
     _fake_window(monkeypatch, exe="code.exe", title="a.py - p - Visual Studio Code")

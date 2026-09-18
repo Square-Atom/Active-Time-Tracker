@@ -930,15 +930,17 @@ class Dashboard:
                                before=self.main_paned)
         self.timeline.load(self.range.anchor, ignore)
 
-    def new_note(self) -> None:
+    def new_note(self, center: bool = False) -> None:
         """Add a note at the current time, e.g. from the global hotkey.
 
         Always today's timeline, whatever day the dashboard is showing.
+        `center` puts the window in the middle of the screen, for when it was
+        asked for from outside the dashboard.
         """
         if not self._timeline_enabled():
             return
         self.timeline.day = dt.date.today()
-        self.timeline.new_note()
+        self.timeline.new_note(center=center)
         if self._visible:
             self.refresh()
 

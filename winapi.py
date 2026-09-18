@@ -64,6 +64,21 @@ user32.GetLastInputInfo.restype = wintypes.BOOL
 user32.GetLastInputInfo.argtypes = [ctypes.POINTER(LASTINPUTINFO)]
 
 
+SPI_GETWORKAREA = 0x0030
+user32.SystemParametersInfoW.restype = wintypes.BOOL
+user32.SystemParametersInfoW.argtypes = [wintypes.UINT, wintypes.UINT,
+                                         ctypes.c_void_p, wintypes.UINT]
+
+
+def work_area() -> tuple[int, int, int, int] | None:
+    """The desktop minus the taskbar, as (left, top, right, bottom)."""
+    rect = wintypes.RECT()
+    if not user32.SystemParametersInfoW(SPI_GETWORKAREA, 0,
+                                        ctypes.byref(rect), 0):
+        return None
+    return rect.left, rect.top, rect.right, rect.bottom
+
+
 @dataclass
 class WindowInfo:
     hwnd: int

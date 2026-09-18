@@ -203,11 +203,14 @@ class NoteActions:
 
 
 def ask_note(parent, day: dt.date, when: dt.datetime | None = None,
-             text: str = "", colors=None) -> tuple[str, str] | None:
+             text: str = "", colors=None, center: bool = False
+             ) -> tuple[str, str] | None:
     """Modal note editor. Returns (timestamp key, text), or None if cancelled.
 
     `when` defaults to the current time on `day`. The time can be changed;
-    the date is the day the note belongs to.
+    the date is the day the note belongs to. `center` puts the window in the
+    middle of the screen rather than over the dashboard — for a note asked
+    for from somewhere else entirely, like a focus reminder.
     """
     bg, panel, fg, muted, accent = colors or ("#1e1f2b", "#272838", "#e8e8f0",
                                               "#9a9ab0", "#7c9cff")
@@ -290,14 +293,16 @@ def ask_note(parent, day: dt.date, when: dt.datetime | None = None,
     time_entry.bind("<Return>", ok)
 
     dlg.update_idletasks()
-    if parent.winfo_viewable():
+    if parent.winfo_viewable() and not center:
         px, py = parent.winfo_rootx(), parent.winfo_rooty()
         pw, ph = parent.winfo_width(), parent.winfo_height()
     else:
         px = py = 0
         pw, ph = dlg.winfo_screenwidth(), dlg.winfo_screenheight()
     x = px + (pw - dlg.winfo_reqwidth()) // 2
-    y = py + (ph - dlg.winfo_reqheight()) // 3
+    # Dialogs sit a little above centre, which reads better — except when
+    # `center` was asked for, and then it means it.
+    y = py + (ph - dlg.winfo_reqheight()) // (2 if center else 3)
     dlg.geometry(f"+{max(0, x)}+{max(0, y)}")
 
     # Brought up by a global hotkey, the dialog has to push to the front.
@@ -566,20 +571,21 @@ class TimelineView(ttk.Frame):
 
     # -- notes ------------------------------------------------------------
 
-    def new_note(self) -> None:
+    def new_note(self, center: bool = False) -> None:
         self.close_popups()
-        self._edit(None, "")
+        self._edit(None, "", center=center)
 
     def _edit_existing(self, ts: str) -> None:
         text = self.notes.get(ts, "")
         self.close_popups()
         self._edit(ts, text, when=dt.datetime.strptime(ts, NOTE_TS_FORMAT))
 
-    def _edit(self, old_ts, text, when=None) -> None:
+    def _edit(self, old_ts, text, when=None, center: bool = False) -> None:
         result = ask_note(self.winfo_toplevel(), self.day, when, text,
                           colors=(self.theme["bg"], self.theme["panel"],
                                   self.theme["fg"], self.theme["muted"],
-                                  self.theme["accent"]))
+                                  self.theme["accent"]),
+                          center=center)
         if result is None:
             return
         ts, content = result

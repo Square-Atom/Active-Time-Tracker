@@ -332,6 +332,9 @@ automatically on first launch.
   "file_rules": {},
   "tags": [],
   "tag_sort": "recent",
+  "notify_enabled": false,
+  "notify_first_minutes": 5,
+  "notify_repeat_minutes": 15,
   "check_updates_on_startup": true,
   "backup_enabled": true,
   "backup_dir": "",
@@ -428,6 +431,24 @@ and rows no tag claims are simply not reported (the Apps view covers those), so
 
 A `merges` list written by <= 1.6 (the old app groups) is converted to tags the
 first time `config.load()` sees it, one tag per group.
+
+### Focus reminders (`notify_*`)
+
+`notifications.FocusWatcher` is fed from the tracker loop, once per tick, with
+the seconds credited to a real app — never for idle time, an ignored app or
+Active Time Tracker's own window, which is what makes those pause the count
+instead of resetting it. A different app resets it.
+
+`notify_first_minutes` is the wait for the first reminder and
+`notify_repeat_minutes` the gap after that, each measured from the previous
+reminder, and both read live. Turning reminders on part way through a stretch
+therefore gives one reminder, not a backlog.
+
+`notifications.Toast` draws the popup itself rather than calling
+`pystray.Icon.notify`: that backend reports clicks on the tray *icon*, not on a
+balloon, and the click — which opens the note window centred on screen — is the
+whole point. It sits in the bottom-right of `sysinfo.work_area()` (the desktop
+minus the taskbar; `None` off Windows, where it falls back to the screen).
 
 ## Update checking
 
