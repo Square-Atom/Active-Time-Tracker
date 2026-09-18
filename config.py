@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass, field
 
 APP_NAME = "ActiveTimeTracker"
-APP_VERSION = "1.6.0"  # keep in sync with the git tag used for releases
+APP_VERSION = "1.7.0"  # keep in sync with the git tag used for releases
 _OLD_APP_NAME = "WorkTimeTracker"  # for one-time migration of existing data
 
 

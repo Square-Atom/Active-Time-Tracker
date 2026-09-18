@@ -3,7 +3,7 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
-## [Unreleased]
+## [1.7.0] — 2026-09-18
 
 ### Added
 - **Tags.** Right-click an app, one of its files, or a website under a browser
