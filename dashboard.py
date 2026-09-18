@@ -335,6 +335,19 @@ class Dashboard:
 
         totalrow = ttk.Frame(self.root)
         totalrow.pack(fill="x", padx=16, pady=(0, 8))
+
+        # Apps / Tags switch: the same range and total, counted two ways. It
+        # sits ahead of the total, which is what it changes the meaning of.
+        modes = ttk.Frame(totalrow)
+        modes.pack(side="left", padx=(0, 14), pady=(8, 0))
+        self.mode_buttons = {}
+        for mode, text in ((APPS, "Apps"), (TAGS, "Tags")):
+            b = ttk.Button(modes, text=text, style="Seg.TButton",
+                           width=len(text) + 1,
+                           command=lambda m=mode: self._set_chart_mode(m))
+            b.pack(side="left", padx=(0, 6))
+            self.mode_buttons[mode] = b
+
         self.total_label = ttk.Label(totalrow, text="0s", style="Total.TLabel")
         self.total_label.pack(side="left")
         self.status_label = ttk.Label(totalrow, text="", style="Muted.TLabel")
@@ -355,20 +368,8 @@ class Dashboard:
         body.rowconfigure(2, weight=1)
         self.main_paned.add(body, weight=4)
 
-        body.columnconfigure(1, weight=0)
         self.chart_title = ttk.Label(body, text="APPLICATIONS", style="Muted.TLabel")
         self.chart_title.grid(row=0, column=0, sticky="w", pady=(0, 4))
-
-        # Apps / Tags switch: the same range and total, counted two ways.
-        modes = ttk.Frame(body)
-        modes.grid(row=0, column=1, sticky="e", pady=(0, 4))
-        self.mode_buttons = {}
-        for mode, text in ((APPS, "Apps"), (TAGS, "Tags")):
-            b = ttk.Button(modes, text=text, style="Seg.TButton",
-                           width=len(text) + 1,
-                           command=lambda m=mode: self._set_chart_mode(m))
-            b.pack(side="left", padx=(6, 0))
-            self.mode_buttons[mode] = b
 
         # Only meaningful once a row is expanded: files/sites come from window
         # titles, so same-named entries can share a row.
@@ -376,7 +377,7 @@ class Dashboard:
                                     wraplength=620, justify="left")
 
         chart_wrap = ttk.Frame(body)
-        chart_wrap.grid(row=2, column=0, columnspan=2, sticky="nsew")
+        chart_wrap.grid(row=2, column=0, sticky="nsew")
         chart_wrap.rowconfigure(0, weight=1)
         chart_wrap.columnconfigure(0, weight=1)
         self.chart = tk.Canvas(chart_wrap, bg=PANEL, highlightthickness=0, height=200)
@@ -924,7 +925,7 @@ class Dashboard:
                         for key in self.expanded)
         self.chart_note.configure(
             text=self._NOTE_SITES if site_only else self._NOTE_FILES)
-        self.chart_note.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 4))
+        self.chart_note.grid(row=1, column=0, sticky="w", pady=(0, 4))
 
     # -- canvas drawing ---------------------------------------------------
 
