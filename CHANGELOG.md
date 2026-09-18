@@ -20,7 +20,10 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
   just before its bar, in both views; hover it for the names.
 - **A Tags window** (the `#` button, or **Tags…** in the tray menu): tags on the
   left, everything filed under the selected one on the right, with **✕** to take
-  an item out. New, rename and delete are under the list.
+  an item out. New, rename and delete are under the list, along with **Sort**:
+  **Recent** (the tag you last filed something into, first) or **A–Z**, and it
+  remembers which you picked. The right-click **Tags** menu is always
+  newest-first, so what you were just using is at the top.
 
 ### Changed
 - **App groups are gone, replaced by tags.** Grouping several executables into

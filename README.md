@@ -73,7 +73,11 @@ spread across several apps, files and websites.
   the full picture.
 * **Tags…** (the `#` button, or the tray menu) opens the tag list: pick a tag on
   the left to see everything in it on the right, and press **✕** to take
-  something out. **New tag**, **Rename** and **Delete** are under the list.
+  something out. **New tag**, **Rename** and **Delete** are under the list, and
+  **Sort** puts the tags in **Recent** order (whatever you last filed something
+  into, first) or **A–Z**. Your choice is remembered.
+* The right-click **Tags** menu is always newest-first, so the tag you were
+  just using is at the top.
 * Tagging never changes what was recorded — it's applied when your stats are
   displayed, so it's retroactive and you can undo it at any time.
 

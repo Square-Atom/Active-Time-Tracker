@@ -85,6 +85,7 @@ class TagsWindow:
         self.storage = storage
         self.on_change = on_change
         self.current: str | None = None      # selected tag name
+        self._order: list[str] = []          # tag names as the list shows them
         # exe -> the display name the database last saw it under.
         self._app_names = dict(storage.known_apps()) if storage else {}
 
@@ -98,7 +99,7 @@ class TagsWindow:
 
         self._style()
         self._build()
-        names = self.cfg.tag_names()
+        names = self.cfg.tag_order()
         self._populate_tags(select=names[0] if names else None)
         self.win.grab_set()
         self.win.focus_force()
@@ -122,6 +123,13 @@ class TagsWindow:
         s.configure("TSmall.TButton", background=theme.PANEL, foreground=theme.FG,
                     padding=(8, 3), borderwidth=0)
         s.map("TSmall.TButton", background=[("active", "#34364a")])
+        s.configure("TSort.TButton", background=theme.BG, foreground=theme.MUTED,
+                    padding=(6, 2), borderwidth=0, font=("Segoe UI", 8))
+        s.map("TSort.TButton", background=[("active", "#34364a")])
+        s.configure("TSortOn.TButton", background=theme.PANEL,
+                    foreground=theme.FG, padding=(6, 2), borderwidth=0,
+                    font=("Segoe UI Semibold", 8))
+        s.map("TSortOn.TButton", background=[("active", theme.PANEL)])
         s.configure("TX.TButton", background=theme.PANEL, foreground=theme.MUTED,
                     padding=(4, 0), borderwidth=0, font=("Segoe UI", 10))
         s.map("TX.TButton", background=[("active", DANGER)],
@@ -157,8 +165,22 @@ class TagsWindow:
         self.taglist.bind("<<ListboxSelect>>", self._on_tag_select)
         self.taglist.bind("<Double-Button-1>", lambda e: self._rename_tag())
 
+        # Sort first, then what you can do to the selected tag.
+        sorts = ttk.Frame(left, style="T.TFrame")
+        sorts.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        ttk.Label(sorts, text="Sort", style="THint.TLabel").pack(side="left",
+                                                                 padx=(2, 6))
+        self.sort_buttons = {}
+        for sort, text in ((config.BY_RECENT, "Recent"), (config.BY_NAME, "A\u2013Z")):
+            b = ttk.Button(sorts, text=text, style="TSort.TButton",
+                           width=len(text) + 1,
+                           command=lambda s=sort: self._set_sort(s))
+            b.pack(side="left", padx=(0, 4))
+            self.sort_buttons[sort] = b
+        self._style_sorts()
+
         buttons = ttk.Frame(left, style="T.TFrame")
-        buttons.grid(row=1, column=0, sticky="ew", pady=(8, 0))
+        buttons.grid(row=2, column=0, sticky="ew", pady=(6, 0))
         ttk.Button(buttons, text="+ New tag", style="TSmall.TButton",
                    command=self._new_tag).pack(side="left")
         ttk.Button(buttons, text="Rename", style="TSmall.TButton",
@@ -205,6 +227,20 @@ class TagsWindow:
         ttk.Button(btns, text="Close", style="Close.TButton",
                    command=self.close).pack(side="right")
 
+    def _style_sorts(self) -> None:
+        for sort, button in self.sort_buttons.items():
+            button.configure(style="TSortOn.TButton" if sort == self.cfg.tag_sort
+                             else "TSort.TButton")
+
+    def _set_sort(self, sort: str) -> None:
+        """Reorder the list — and remember it, since it's a habit, not a mood."""
+        if sort == self.cfg.tag_sort:
+            return
+        self.cfg.tag_sort = sort
+        self._style_sorts()
+        self._save()
+        self._populate_tags(select=self.current)
+
     def _on_wheel(self, event) -> None:
         self.items_canvas.yview_scroll(-2 if event.delta > 0 else 2, "units")
 
@@ -223,7 +259,9 @@ class TagsWindow:
         return f"{name}  ·  {len(self.cfg.tag_items(name))}"
 
     def _populate_tags(self, select: str | None) -> None:
-        names = self.cfg.tag_names()
+        # Held onto: the listbox is indexed by position, and the order on
+        # screen isn't the order they're stored in.
+        names = self._order = self.cfg.tag_order()
         self.taglist.delete(0, "end")
         for name in names:
             self.taglist.insert("end", self._tag_label(name))
@@ -242,9 +280,8 @@ class TagsWindow:
         sel = self.taglist.curselection()
         if not sel:
             return
-        names = self.cfg.tag_names()
-        if sel[0] < len(names):
-            self._load(names[sel[0]])
+        if sel[0] < len(self._order):
+            self._load(self._order[sel[0]])
 
     def _load(self, name: str | None) -> None:
         self.current = name
@@ -334,7 +371,7 @@ class TagsWindow:
         self.cfg.delete_tag(name)
         self.cfg.app_colors.pop(config.tag_key(name), None)
         self._save()
-        names = self.cfg.tag_names()
+        names = self.cfg.tag_order()
         self._populate_tags(select=names[0] if names else None)
 
     # -- save / close -----------------------------------------------------

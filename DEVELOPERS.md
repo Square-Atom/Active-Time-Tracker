@@ -331,6 +331,7 @@ automatically on first launch.
   "ignore_apps": ["lockapp.exe"],
   "file_rules": {},
   "tags": [],
+  "tag_sort": "recent",
   "check_updates_on_startup": true,
   "backup_enabled": true,
   "backup_dir": "",
@@ -410,6 +411,12 @@ A list of `{ "name": ..., "items": [...] }`. An item is `{"app": "code.exe"}`
 for a whole application, or `{"app": "chrome.exe", "file": "GitHub"}` for one
 file or website inside it (`"file": ""` is that app's untitled time). The same
 item may appear in any number of tags.
+
+Items carry an `added` epoch stamp (and a tag an optional `created`), which is
+all `Config.tag_recency` needs to order tags by what you filed most recently —
+`tag_sort` (`"recent"` or `"name"`) is the Tags window's choice, while the
+right-click menu is always recent-first. Entries without a stamp (app groups
+carried over from <= 1.6) count as oldest and keep their stored order.
 
 `storage.fold_tags` turns `(app, file)` totals into one row per tag. A row
 counts toward every tag that claims it — so tag totals overlap and don't add up

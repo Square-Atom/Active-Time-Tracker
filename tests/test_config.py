@@ -198,6 +198,55 @@ def test_deleting_a_tag_leaves_the_others_alone():
     assert cfg.tag_names() == ["Play"]
 
 
+def test_tags_can_be_ordered_by_recent_addition_or_by_name(monkeypatch):
+    clock = {"t": 100}
+    monkeypatch.setattr(config, "_now", lambda: clock["t"])
+    cfg = config.Config()
+    cfg.set_item_tag("Apple", "a.exe", None, True)
+    clock["t"] = 200
+    cfg.set_item_tag("Zebra", "z.exe", None, True)
+
+    assert cfg.tag_order(config.BY_RECENT) == ["Zebra", "Apple"]
+    assert cfg.tag_order(config.BY_NAME) == ["Apple", "Zebra"]
+
+    clock["t"] = 300                       # Apple gains something newer
+    cfg.set_item_tag("Apple", "b.exe", None, True)
+    assert cfg.tag_order(config.BY_RECENT) == ["Apple", "Zebra"]
+
+
+def test_a_brand_new_tag_counts_as_the_most_recent(monkeypatch):
+    """Otherwise the tag you just made would land at the bottom of the list."""
+    clock = {"t": 100}
+    monkeypatch.setattr(config, "_now", lambda: clock["t"])
+    cfg = config.Config()
+    cfg.set_item_tag("Old", "a.exe", None, True)
+    clock["t"] = 200
+    cfg.create_tag("Empty")
+    assert cfg.tag_order(config.BY_RECENT) == ["Empty", "Old"]
+
+
+def test_untimed_tags_keep_the_order_they_are_stored_in():
+    """Tags carried over from app groups have no timestamps at all."""
+    cfg = config.Config(tags=config.clean_tags([
+        {"name": "First", "items": [{"app": "a.exe"}]},
+        {"name": "Second", "items": [{"app": "b.exe"}]}]))
+    assert cfg.tag_order(config.BY_RECENT) == ["First", "Second"]
+
+
+def test_the_sort_choice_is_remembered(tmp_path, monkeypatch):
+    import json
+    path = tmp_path / "config.json"
+    monkeypatch.setattr(config, "CONFIG_PATH", str(path))
+    cfg = config.load()
+    assert cfg.tag_sort == config.BY_RECENT      # the default
+    cfg.tag_sort = config.BY_NAME
+    cfg.save()
+    assert config.load().tag_sort == config.BY_NAME
+
+    path.write_text(json.dumps({"tag_sort": "nonsense"}), encoding="utf-8")
+    assert config.load().tag_sort == config.BY_RECENT
+
+
 def test_unusable_tags_are_dropped_when_loaded():
     tags = config.clean_tags([
         {"name": "  Work  ", "items": [{"app": "Code.exe"}, "game.exe", {}]},

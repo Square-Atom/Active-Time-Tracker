@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass, field
 
 APP_NAME = "ActiveTimeTracker"
@@ -276,6 +277,8 @@ DEFAULTS = {
     # e.g. [{"name": "Work", "items": [{"app": "code.exe"},
     #                                  {"app": "chrome.exe", "file": "GitHub"}]}]
     "tags": [],
+    # How the Tags window lists them: "recent" (newest addition first) or "name".
+    "tag_sort": "recent",
     "check_updates_on_startup": True,
     # Daily rotating backups of data.db (+ config.json).
     "backup_enabled": True,
@@ -296,6 +299,13 @@ DEFAULTS = {
 }
 
 TAG_PREFIX = "tag::"   # synthetic chart key for a tag row
+BY_RECENT = "recent"   # tag orderings: newest addition first …
+BY_NAME = "name"       # … or A-Z
+
+
+def _now() -> int:
+    """Epoch seconds, as a seam tests can hold still."""
+    return int(time.time())
 
 
 def tag_key(name: str) -> str:
@@ -312,8 +322,23 @@ def item_key(app: str, file: str | None = None) -> tuple[str, str | None]:
     return ((app or "").strip().lower(), file)
 
 
+def _stamp(value) -> int:
+    """A stored `added`/`created` time, or 0 when it's missing or nonsense."""
+    try:
+        return max(0, int(float(value)))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _item(app: str, file: str | None, added: int) -> dict:
+    entry = {"app": app} if file is None else {"app": app, "file": file}
+    if added:
+        entry["added"] = added
+    return entry
+
+
 def _clean_items(raw) -> list[dict]:
-    """Stored items -> normalised, de-duplicated [{app, file?}]."""
+    """Stored items -> normalised, de-duplicated [{app, file?, added?}]."""
     out: list[dict] = []
     seen: set[tuple[str, str | None]] = set()
     for entry in raw or []:
@@ -325,7 +350,7 @@ def _clean_items(raw) -> list[dict]:
         if not app or (app, file) in seen:
             continue
         seen.add((app, file))
-        out.append({"app": app} if file is None else {"app": app, "file": file})
+        out.append(_item(app, file, _stamp(entry.get("added"))))
     return out
 
 
@@ -344,7 +369,11 @@ def clean_tags(raw) -> list[dict]:
         if not name or name.casefold() in seen:
             continue
         seen.add(name.casefold())
-        out.append({"name": name, "items": _clean_items(entry.get("items"))})
+        tag = {"name": name, "items": _clean_items(entry.get("items"))}
+        created = _stamp(entry.get("created"))
+        if created:
+            tag["created"] = created
+        out.append(tag)
     return out
 
 
@@ -357,6 +386,7 @@ class Config:
     ignore_apps: list[str] = field(default_factory=list)
     file_rules: dict[str, list[str]] = field(default_factory=dict)
     tags: list[dict] = field(default_factory=list)
+    tag_sort: str = BY_RECENT
     check_updates_on_startup: bool = True
     backup_enabled: bool = True
     backup_dir: str = ""
@@ -375,6 +405,7 @@ class Config:
             "ignore_apps": self.ignore_apps,
             "file_rules": self.file_rules,
             "tags": self.tags,
+            "tag_sort": self.tag_sort,
             "check_updates_on_startup": self.check_updates_on_startup,
             "backup_enabled": self.backup_enabled,
             "backup_dir": self.backup_dir,
@@ -431,7 +462,7 @@ class Config:
         while self._find_tag(candidate):
             candidate = f"{base} ({n})"
             n += 1
-        self.tags.append({"name": candidate, "items": []})
+        self.tags.append({"name": candidate, "items": [], "created": _now()})
         return candidate
 
     def delete_tag(self, name: str) -> None:
@@ -465,9 +496,25 @@ class Config:
         items = tag.setdefault("items", [])
         kept = [i for i in items if item_key(i.get("app", ""), i.get("file")) != key]
         if on:
-            entry = {"app": key[0]} if key[1] is None else {"app": key[0], "file": key[1]}
-            kept.append(entry)
+            # Stamped on the way in, so "what have I been filing lately" can
+            # order the tag lists.
+            kept.append(_item(key[0], key[1], _now()))
         tag["items"] = kept
+
+    def tag_recency(self, name: str) -> int:
+        """When this tag last gained an item (or was created, if never used)."""
+        tag = self._find_tag(name)
+        if not tag:
+            return 0
+        return max([_stamp(tag.get("created"))]
+                   + [_stamp(i.get("added")) for i in tag.get("items", [])])
+
+    def tag_order(self, sort: str | None = None) -> list[str]:
+        """Tag names in display order. Ties keep the order they're stored in."""
+        names = self.tag_names()
+        if (sort or self.tag_sort) == BY_NAME:
+            return sorted(names, key=lambda n: n.casefold())
+        return sorted(names, key=lambda n: -self.tag_recency(n))
 
     def tracks_files(self, exe: str) -> bool:
         """Whether this app is currently split by file (vs. app-level only)."""
@@ -538,6 +585,8 @@ def load() -> Config:
         # From `stored` for the same reason as the backup interval below: the
         # defaults carry an empty "tags", which would mask an older config.
         tags=_tags_from(stored),
+        tag_sort=(data.get("tag_sort") if data.get("tag_sort") in
+                  (BY_RECENT, BY_NAME) else BY_RECENT),
         check_updates_on_startup=data.get("check_updates_on_startup", True),
         backup_enabled=data.get("backup_enabled", True),
         backup_dir=data.get("backup_dir", ""),

@@ -307,6 +307,32 @@ def test_items_are_listed_with_a_remove_button(tagwin, tk_root, cfg):
     assert len(_item_rows(tagwin)) == 1
 
 
+def test_sort_buttons_reorder_the_list_and_stick(tagwin, tk_root, cfg,
+                                                 monkeypatch):
+    clock = {"t": 100}
+    monkeypatch.setattr(config, "_now", lambda: clock["t"])
+    cfg.set_item_tag("Apple", "code.exe", None, True)
+    clock["t"] = 200
+    cfg.set_item_tag("Zebra", "code.exe", "main.py", True)
+    tagwin._populate_tags(select=None)
+    tk_root.update_idletasks()
+
+    listed = lambda: [tagwin.taglist.get(i).split("  ·")[0]
+                      for i in range(tagwin.taglist.size())]
+    assert listed() == ["Zebra", "Apple"], "newest addition first by default"
+
+    tagwin._set_sort(config.BY_NAME)
+    tk_root.update_idletasks()
+    assert listed() == ["Apple", "Zebra"]
+    assert cfg.tag_sort == config.BY_NAME, "the choice is saved, not just applied"
+
+    # …and the selection still points at the tag the row now holds
+    tagwin.taglist.selection_clear(0, "end")
+    tagwin.taglist.selection_set(0)
+    tagwin._on_tag_select()
+    assert tagwin.current == "Apple"
+
+
 def test_deleting_a_tag_asks_first(tagwin, tk_root, cfg, monkeypatch):
     from tkinter import messagebox
     cfg.set_item_tag("Work", "code.exe", None, True)

@@ -723,7 +723,9 @@ class Dashboard:
         # Tk only keeps a weak hold on control variables; without a reference
         # of our own they're collected and every tick reads as off.
         self._ctx_tag_vars = []
-        for name in cfg.tag_names():
+        # Always newest-first here: whatever you tagged a moment ago is the
+        # likeliest thing to be reaching for again.
+        for name in cfg.tag_order(config.BY_RECENT):
             var = tk.BooleanVar(value=name in current)
             self._ctx_tag_vars.append(var)
             sub.add_checkbutton(

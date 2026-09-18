@@ -522,6 +522,23 @@ def test_right_clicking_a_file_offers_its_own_tags(dash, tk_root, store, cfg,
     assert [v.get() for v in dash._ctx_tag_vars] == [True, False]
 
 
+def test_the_tag_submenu_is_always_newest_first(dash, tk_root, store, cfg,
+                                                today, monkeypatch):
+    """Whatever you tagged a moment ago is the likeliest one to want again."""
+    clock = {"t": 100}
+    monkeypatch.setattr(config, "_now", lambda: clock["t"])
+    cfg.tag_sort = config.BY_NAME          # the window's choice, not the menu's
+    cfg.set_item_tag("Apple", "game.exe", None, True)
+    clock["t"] = 200
+    cfg.set_item_tag("Zebra", "game.exe", None, True)
+    store.add_seconds(today, "game.exe", "Game", "", 60)
+    dash.refresh(); _drawn(dash, tk_root)
+
+    menu = dash._menu()
+    sub = dash._tag_submenu(menu, "game.exe", None, "Game")
+    assert _labels(sub)[:2] == ["Zebra", "Apple"]
+
+
 def test_a_tagged_item_can_be_taken_out_from_the_chart(dash, tk_root, store,
                                                        cfg, today):
     store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
