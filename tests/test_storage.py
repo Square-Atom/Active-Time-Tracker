@@ -45,8 +45,7 @@ def test_tags_fold_at_read_time_without_touching_raw_rows(store, today):
 
     totals = {t["name"]: t["seconds"] for t in
               store.totals_by_tag(today, today, cfg.tags)}
-    assert totals["Work"] == 150
-    assert totals["Untagged"] == 200, "YouTube belongs to no tag"
+    assert totals == {"Work": 150}, "YouTube belongs to no tag, so it isn't listed"
 
     # the underlying per-app rows survive, so tagging stays reversible
     raw = {a["app"]: a["seconds"] for a in store.totals_by_app(today, today)}
@@ -76,13 +75,17 @@ def test_a_tagged_app_counts_its_files_once_even_if_they_are_tagged_too(
     assert [(i["file"], i["seconds"]) for i in tag["items"]] == [(None, 120)]
 
 
-def test_an_empty_tag_still_shows_up(store, today):
+def test_a_tag_with_no_time_in_the_range_is_left_out(store, today):
+    """A tag you didn't touch has nothing to say about the range."""
     store.add_seconds(today, "code.exe", "VS Code", "", 100)
+    store.add_seconds("2020-01-01", "game.exe", "Game", "", 500)
     cfg = config.Config()
-    cfg.create_tag("Someday")
-    rows = store.totals_by_tag(today, today, cfg.tags)
-    assert [(t["name"], t["seconds"]) for t in rows] == [
-        ("Someday", 0.0), ("Untagged", 100)]
+    cfg.create_tag("Someday")                       # nothing in it at all
+    cfg.set_item_tag("Old", "game.exe", None, True)  # nothing in *this* range
+    cfg.set_item_tag("Now", "code.exe", None, True)
+    assert [t["name"] for t in store.totals_by_tag(today, today, cfg.tags)] == ["Now"]
+    assert [t["name"] for t in
+            store.totals_by_tag("2020-01-01", today, cfg.tags)] == ["Old", "Now"]
 
 
 def test_totals_by_app_file_splits_app_level_time_from_files(store, today):

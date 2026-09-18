@@ -65,8 +65,10 @@ spread across several apps, files and websites.
   under a browser) → **Tags**, then tick an existing tag or pick **New tag…**.
 * **Anything can carry several tags**, and its time counts toward each of them.
   So tag totals overlap on purpose and add up to more than your day.
-* **Switch the list to Tags** to see the totals per tag, with everything that
-  isn't tagged gathered under **Untagged**. Expand a tag to see what's in it.
+* **Switch the list to Tags** to see the total per tag; expand a tag to see
+  what's in it. Only tags with time in the period you're looking at are
+  listed, and untagged time isn't shown here — switch back to **Apps** for
+  the full picture.
 * **Tags…** (the `#` button, or the tray menu) opens the tag list: pick a tag on
   the left to see everything in it on the right, and press **✕** to take
   something out. **New tag**, **Rename** and **Delete** are under the list.

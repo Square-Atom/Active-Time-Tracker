@@ -30,7 +30,6 @@ BAR_COLORS = [
     "#82d8ff", "#f78c6c", "#a6e22e", "#ff9de2", "#8fd6a9",
 ]
 ROW_HOVER = "#383a58"   # readable against PANEL without shouting
-LEFTOVER = "#4a4c66"    # the "Untagged" bar: present, but not a tag
 APPS = "apps"           # chart modes: one row per application …
 TAGS = "tags"           # … or one row per tag, however its items are spread
 MARKER_W = 16    # expander column, so names line up whether or not one is shown
@@ -414,7 +413,7 @@ class Dashboard:
             color_for=self._color_for)
 
         self._data_apps: list[dict] = []
-        self._data_tags: list[dict] = []               # tag rows + "Untagged"
+        self._data_tags: list[dict] = []               # one row per tag in range
         self._data_files: dict[str, list[dict]] = {}   # app key -> its files
         self._data_trend: dict[str, float] = {}
         self._grand = 0.0
@@ -642,19 +641,13 @@ class Dashboard:
 
     def _fill_tag_menu(self, menu, row, event) -> None:
         """Tags view: edit the tag itself, or what's filed under it."""
-        tag = row.get("tag")
+        tag = row["tag"]
         if row["kind"] == "item":
-            if tag is None:                 # something under "Untagged"
-                menu.add_cascade(label="Add to tag", menu=self._tag_submenu(
-                    menu, row["app"], row["file"], row["label"]))
-            else:
-                menu.add_command(
-                    label=f'Remove from "{tag}"',
-                    command=lambda: self._ctx_set_tag(tag, row["app"],
-                                                      row["file"], False))
+            menu.add_command(
+                label=f'Remove from "{tag}"',
+                command=lambda: self._ctx_set_tag(tag, row["app"],
+                                                  row["file"], False))
             return
-        if tag is None:
-            return                          # the "Untagged" row isn't editable
         menu.add_command(label="Bar colour…",
                          command=lambda: self._open_color_picker(row["key"], tag,
                                                                  event.x_root,
@@ -975,10 +968,11 @@ class Dashboard:
         return rows
 
     def _tag_rows(self) -> list[dict]:
-        """One row per tag (then "Untagged"), expanding to what's inside it.
+        """One row per tag with time in this range, expanding to its items.
 
         Percentages are of the grand total, not of each other: an item can be
-        in several tags, so these deliberately add up to more than 100%.
+        in several tags and untagged time isn't listed, so these don't add up
+        to 100% either way.
         """
         rows: list[dict] = []
         for tag in self._data_tags:
@@ -988,7 +982,7 @@ class Dashboard:
                 "tag": tag["tag"], "app": None, "file": None,
                 "seconds": tag["seconds"],
                 "pct": (tag["seconds"] / self._grand * 100) if self._grand else 0,
-                "color": LEFTOVER if tag["tag"] is None else self._color_for(key),
+                "color": self._color_for(key),
                 "expandable": bool(tag["items"]),
                 "expanded": key in self.expanded_tags,
             })
@@ -1001,9 +995,7 @@ class Dashboard:
                     "tag": tag["tag"], "app": item["app"], "file": item["file"],
                     "seconds": item["seconds"],
                     "pct": item["seconds"] / total * 100,
-                    "color": _blend(
-                        LEFTOVER if tag["tag"] is None else self._color_for(key),
-                        PANEL, 0.45),
+                    "color": _blend(self._color_for(key), PANEL, 0.45),
                     "expandable": False, "expanded": False,
                 })
         return rows
@@ -1076,11 +1068,13 @@ class Dashboard:
         c.configure(scrollregion=(0, 0, w, max(y + pad, h)))
 
     def _empty_text(self) -> str:
-        """Why the list is empty — no data, or nothing tagged yet."""
+        """Why the list is empty — no data, no tags, or none of them used."""
         cfg = self.tracker.cfg if self.tracker else None
-        if self.chart_mode == TAGS and cfg is not None and not cfg.tags:
+        if self.chart_mode != TAGS or cfg is None or not self._grand:
+            return "No activity in this range"
+        if not cfg.tags:
             return "No tags yet — right-click an app or file to add one"
-        return "No activity in this range"
+        return "Nothing tagged in this range"
 
     _MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]

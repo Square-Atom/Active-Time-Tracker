@@ -88,9 +88,11 @@ rules in `DEFAULT_FILE_RULES` (+ user overrides in `config.json` `file_rules`):
 **Tags** — `config.tags` = list of `{name, items[]}`, where an item is
 `{"app": exe}` (the whole app) or `{"app": exe, "file": name}` (one file/site
 inside it; `file=""` is the app's untitled time). The chart key is
-`tag::<name>`, leftovers land under `config.UNTAGGED_KEY`, and the folding
-happens in `storage.fold_tags` — an item may sit in several tags, so tag
-totals overlap by design, but a row is only counted once within one tag.
+`tag::<name>`, and the folding happens in `storage.fold_tags` — an item may
+sit in several tags, so tag totals overlap by design, but a row is only
+counted once within one tag. Tags with no time in the range are left out, and
+untagged time isn't reported at all (that's the Apps view's job), so the tag
+rows don't add up to the grand total in either direction.
 `config.load()` carries a <= 1.6 `merges` list over into tags.
 
 ## Conventions

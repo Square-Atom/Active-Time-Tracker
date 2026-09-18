@@ -411,11 +411,13 @@ for a whole application, or `{"app": "chrome.exe", "file": "GitHub"}` for one
 file or website inside it (`"file": ""` is that app's untitled time). The same
 item may appear in any number of tags.
 
-`storage.fold_tags` turns `(app, file)` totals into one row per tag, plus an
-`Untagged` row for whatever no tag claims. A row counts toward every tag that
-claims it — so tag totals overlap and don't add up to the grand total — but
-only once within a single tag, even when that tag holds both the app and one of
-its files. Applied at read time (non-destructive), like the ignore list.
+`storage.fold_tags` turns `(app, file)` totals into one row per tag. A row
+counts toward every tag that claims it — so tag totals overlap and don't add up
+to the grand total — but only once within a single tag, even when that tag holds
+both the app and one of its files. Tags with no time in the range are dropped,
+and rows no tag claims are simply not reported (the Apps view covers those), so
+`fold_tags` returns [] for a range nothing tagged touched. Applied at read time
+(non-destructive), like the ignore list.
 
 A `merges` list written by <= 1.6 (the old app groups) is converted to tags the
 first time `config.load()` sees it, one tag per group.

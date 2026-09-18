@@ -11,10 +11,11 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
   several tags, and its time counts toward each of them, so you can ask "how
   much went into this project" when the answer is spread across a code editor,
   a paint program and a couple of websites.
-- **A Tags mode for the list.** The switch above the chart (top right) flips
-  between one row per app and one row per tag, over the same range and total.
-  Expand a tag to see what's in it; whatever carries no tag is gathered under
-  **Untagged**.
+- **A Tags mode for the list.** The switch beside the total flips between one
+  row per app and one row per tag, over the same range. Expand a tag to see
+  what's in it. Only tags you actually spent time on in that range are listed,
+  and untagged time isn't shown here — the Apps view is where everything is
+  accounted for.
 - **A Tags window** (the `#` button, or **Tags…** in the tray menu): tags on the
   left, everything filed under the selected one on the right, with **✕** to take
   an item out. New, rename and delete are under the list.

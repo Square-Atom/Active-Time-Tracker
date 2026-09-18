@@ -295,8 +295,7 @@ DEFAULTS = {
     "note_hotkey": "",
 }
 
-TAG_PREFIX = "tag::"        # synthetic chart key for a tag row
-UNTAGGED_KEY = "\x00untagged"   # chart key for everything in no tag at all
+TAG_PREFIX = "tag::"   # synthetic chart key for a tag row
 
 
 def tag_key(name: str) -> str:

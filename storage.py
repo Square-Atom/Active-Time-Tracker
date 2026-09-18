@@ -89,9 +89,6 @@ def integrity_problem(path: str) -> str | None:
     return None if result == "ok" else result
 
 
-UNTAGGED_NAME = "Untagged"
-
-
 def item_label(app_name: str, file: str | None) -> str:
     """How a tagged item reads in the chart: the app, or a file inside it."""
     if file is None:
@@ -100,13 +97,17 @@ def item_label(app_name: str, file: str | None) -> str:
 
 
 def fold_tags(rows, tags) -> list[dict]:
-    """Fold (app, file) totals into one row per tag, plus what's untagged.
+    """Fold (app, file) totals into one row per tag, busiest first.
 
     `rows` are `totals_by_app_file` results; `tags` is `config.Config.tags`.
     An item is either a whole app (no `file`) or one file/site inside it, and
     a row counts toward *every* tag that claims it — so tag totals overlap by
     design and don't add up to the grand total. Within a single tag a row is
     counted once, even when both the app and the file are in that same tag.
+
+    Only tags with time in this range come back: a tag you didn't touch has
+    nothing to say about the range, and untagged time isn't reported here at
+    all — that's what the Apps view shows.
     """
     if not tags:
         return []
@@ -117,14 +118,12 @@ def fold_tags(rows, tags) -> list[dict]:
         for entry in tag.get("items", []):
             app, file = config.item_key(entry.get("app", ""), entry.get("file"))
             (apps if file is None else files).add(app if file is None else (app, file))
-        folded.append({"key": config.tag_key(name), "name": name, "tag": name,
+        folded.append({"key": config.tag_key(name), "name": name,
                        "seconds": 0.0, "apps": apps, "files": files,
                        "parts": defaultdict(float), "names": {}})
 
-    untagged: dict[str, dict] = {}
     for row in rows:
         app, file, seconds = row["app"], row["file"], row["seconds"]
-        claimed = False
         for tag in folded:
             if app in tag["apps"]:
                 part = (app, None)          # the whole app covers this row
@@ -132,19 +131,14 @@ def fold_tags(rows, tags) -> list[dict]:
                 part = (app, file)
             else:
                 continue
-            claimed = True
             tag["seconds"] += seconds
             tag["parts"][part] += seconds
             tag["names"][app] = row["app_name"]
-        if not claimed:
-            entry = untagged.setdefault(
-                app, {"app": app, "file": None, "app_name": row["app_name"],
-                      "label": row["app_name"], "seconds": 0.0,
-                      "key": config.UNTAGGED_KEY + "\x00" + app})
-            entry["seconds"] += seconds
 
     out = []
     for tag in folded:
+        if not tag["seconds"]:
+            continue
         items = []
         for (app, file), seconds in tag["parts"].items():
             app_name = tag["names"].get(app) or config.friendly_name(app)
@@ -152,15 +146,9 @@ def fold_tags(rows, tags) -> list[dict]:
                           "label": item_label(app_name, file), "seconds": seconds,
                           "key": f"{tag['key']}\x00{app}\x00{'' if file is None else file}"})
         items.sort(key=lambda i: i["seconds"], reverse=True)
-        out.append({"key": tag["key"], "name": tag["name"], "tag": tag["tag"],
+        out.append({"key": tag["key"], "name": tag["name"], "tag": tag["name"],
                     "seconds": tag["seconds"], "items": items})
     out.sort(key=lambda t: t["seconds"], reverse=True)
-
-    leftovers = sorted(untagged.values(), key=lambda i: i["seconds"], reverse=True)
-    if leftovers:
-        out.append({"key": config.UNTAGGED_KEY, "name": UNTAGGED_NAME, "tag": None,
-                    "seconds": sum(i["seconds"] for i in leftovers),
-                    "items": leftovers})
     return out
 
 

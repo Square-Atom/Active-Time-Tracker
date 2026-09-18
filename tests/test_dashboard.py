@@ -449,7 +449,7 @@ def test_tags_mode_totals_each_tag_and_names_the_rest(dash, tk_root, store,
 
     dash._set_chart_mode(TAGS); _drawn(dash, tk_root)
     rows = [(r["label"], r["seconds"]) for r in dash._rows if r["kind"] == "tag"]
-    assert rows == [("Work", 150), ("Untagged", 200)]
+    assert rows == [("Work", 150)], "untagged time isn't a row of its own"
     # the total across the top stays the same however it's sliced
     assert dash.total_label.cget("text") == fmt_duration(350)
 
@@ -489,8 +489,10 @@ def test_tagging_from_the_chart_reaches_the_config_and_the_view(
 
     dash._ctx_set_tag("Work", "chrome.exe", "GitHub", False)
     _drawn(dash, tk_root)
-    # emptied, but the tag itself stays until it's deleted
-    assert [(r["label"], r["seconds"]) for r in dash._rows if r["kind"] == "tag"]         == [("Work", 0.0), ("Untagged", 50)]
+    # the tag itself stays in the config, but with nothing left in the
+    # range it drops out of the list
+    assert dash._rows == []
+    assert cfg.tag_names() == ["Work"]
 
 
 def _labels(menu):
@@ -536,23 +538,6 @@ def test_a_tagged_item_can_be_taken_out_from_the_chart(dash, tk_root, store,
     assert cfg.tags_for("code.exe", "main.py") == []
 
 
-def test_untagged_rows_offer_a_way_in_and_the_summary_row_no_menu(
-        dash, tk_root, store, cfg, today):
-    store.add_seconds(today, "game.exe", "Game", "", 100)
-    cfg.create_tag("Work")
-    dash._set_chart_mode(TAGS); _drawn(dash, tk_root)
-    _click(dash, config.UNTAGGED_KEY); _drawn(dash, tk_root)
-
-    summary = next(r for r in dash._rows if r["kind"] == "tag" and r["tag"] is None)
-    menu = dash._menu()
-    dash._fill_tag_menu(menu, summary, types.SimpleNamespace(x_root=0, y_root=0))
-    assert menu.index("end") is None, "nothing to edit about 'Untagged' itself"
-
-    item = next(r for r in dash._rows if r["kind"] == "item")
-    dash._fill_tag_menu(menu, item, types.SimpleNamespace(x_root=0, y_root=0))
-    assert _labels(menu) == ["Add to tag"]
-
-
 def test_renaming_a_tag_carries_its_colour(dash, cfg, monkeypatch):
     import tags as tags_mod
     cfg.create_tag("Work")
@@ -564,11 +549,15 @@ def test_renaming_a_tag_carries_its_colour(dash, cfg, monkeypatch):
     assert cfg.app_colors == {"tag::Day job": "#123456"}
 
 
-def test_tags_mode_says_so_when_there_are_no_tags(dash, tk_root, store, today):
+def test_tags_mode_explains_an_empty_list(dash, tk_root, store, cfg, today):
     store.add_seconds(today, "code.exe", "VS Code", "", 100)
     dash._set_chart_mode(TAGS); _drawn(dash, tk_root)
     assert dash._rows == []
     assert any("No tags yet" in t for t in _texts(dash.chart))
+
+    cfg.set_item_tag("Work", "game.exe", None, True)   # tagged, but not today
+    dash.refresh(); _drawn(dash, tk_root)
+    assert any("Nothing tagged in this range" in t for t in _texts(dash.chart))
 
 
 def test_right_click_actions_update_config(dash, tk_root, store, cfg, today):
