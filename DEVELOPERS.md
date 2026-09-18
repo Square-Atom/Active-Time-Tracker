@@ -238,7 +238,7 @@ Stored in the per-user data folder (see the README for the path per OS):
 
 * `data.db` — tracked time (SQLite). One table `activity(day, app, app_name,
   file, seconds)`, keyed by `(day, app, file)`; `file=''` means app-level. Raw
-  per-exe rows are always stored — **app groups and ignores are applied at read
+  per-exe rows are always stored — **tags and ignores are applied at read
   time**, so they're retroactive and reversible.
 * `config.json` — settings (below).
 * `app.log` — error log.
@@ -330,7 +330,7 @@ automatically on first launch.
   "autostart": true,
   "ignore_apps": ["lockapp.exe"],
   "file_rules": {},
-  "merges": [],
+  "tags": [],
   "check_updates_on_startup": true,
   "backup_enabled": true,
   "backup_dir": "",
@@ -339,14 +339,14 @@ automatically on first launch.
 }
 ```
 
-`app_colors` maps an app key (or `merge::<group>`) to a `#rrggbb` bar colour,
+`app_colors` maps an app key (or `tag::<name>`) to a `#rrggbb` bar colour,
 set from the dashboard's right-click menu. Anything not listed gets a stable
 colour derived from its name — `dashboard.color_for()` hashes the name with md5
 rather than `hash()`, which is randomised per process and would change the
 palette on every restart.
 
-Most of this is editable from the app's UI (Settings, Ignored apps, App groups,
-and the right-click menu). Direct editing is for advanced tweaks.
+Most of this is editable from the app's UI (Settings, Ignored apps, Tags, and
+the right-click menu). Direct editing is for advanced tweaks.
 
 ### File-tracking rules
 
@@ -404,10 +404,21 @@ Advanced users can hand-write a custom regex list (first pattern with a named
 `(?P<file>…)` group wins), e.g.
 `"mytool.exe": ["(?P<file>[^\\\\/:*?\"<>|]+\\.myext)"]`.
 
-### App groups (`merges`)
+### Tags (`tags`)
 
-A list of `{ "name": ..., "members": ["a.exe", "b.exe"] }`. Members are counted
-as one app in reports. Applied at read time (non-destructive).
+A list of `{ "name": ..., "items": [...] }`. An item is `{"app": "code.exe"}`
+for a whole application, or `{"app": "chrome.exe", "file": "GitHub"}` for one
+file or website inside it (`"file": ""` is that app's untitled time). The same
+item may appear in any number of tags.
+
+`storage.fold_tags` turns `(app, file)` totals into one row per tag, plus an
+`Untagged` row for whatever no tag claims. A row counts toward every tag that
+claims it — so tag totals overlap and don't add up to the grand total — but
+only once within a single tag, even when that tag holds both the app and one of
+its files. Applied at read time (non-destructive), like the ignore list.
+
+A `merges` list written by <= 1.6 (the old app groups) is converted to tags the
+first time `config.load()` sees it, one tag per group.
 
 ## Update checking
 

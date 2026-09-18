@@ -39,6 +39,8 @@ Click the tray icon to open the dashboard.
 * **Browsers break down by website** — click Chrome, Edge or Firefox to see
   which sites your time went to (read from the page title, so the name may not
   exactly match the domain).
+* **Apps / Tags** (top right of the list) switches between one row per app
+  and one row per **tag** — see below.
 * **Trend chart** at the bottom shows your activity over time — drag the divider
   above it to make it taller or shorter.
 * **Timeline** (single days) shows *when* you used each app, from the first
@@ -55,7 +57,27 @@ Click the tray icon to open the dashboard.
   with the dashboard closed (Windows only for now). The timeline itself can be
   switched off there too.
 
+### Tags
+Tags let you ask "how much time went into *this project*" when the answer is
+spread across several apps, files and websites.
+
+* **Add a tag** — right-click any row (an app, one of its files, or a website
+  under a browser) → **Tags**, then tick an existing tag or pick **New tag…**.
+* **Anything can carry several tags**, and its time counts toward each of them.
+  So tag totals overlap on purpose and add up to more than your day.
+* **Switch the list to Tags** to see the totals per tag, with everything that
+  isn't tagged gathered under **Untagged**. Expand a tag to see what's in it.
+* **Tags…** (the `#` button, or the tray menu) opens the tag list: pick a tag on
+  the left to see everything in it on the right, and press **✕** to take
+  something out. **New tag**, **Rename** and **Delete** are under the list.
+* Tagging never changes what was recorded — it's applied when your stats are
+  displayed, so it's retroactive and you can undo it at any time.
+
+*Upgrading from 1.6 or earlier?* Your old **app groups** come across as tags
+with the same names.
+
 ### Right-click an app
+* **Tags** — file this row under a tag (see above).
 * **Track files for this app** — turn per-file tracking on or off for that app.
   (Works when the app shows the file name in its title bar.)
 * **Bar colour…** — pick a colour for that app, so Photoshop can be blue and
@@ -66,7 +88,7 @@ Click the tray icon to open the dashboard.
 * **Open dashboard** · **Pause / resume tracking**
 * **Settings** — idle timeout, how often it checks, start-with-system, updates,
   backups, and the timeline
-* **App groups** — count several programs as one (e.g. a game and its launcher)
+* **Tags** — group apps, files and websites, and see the time per tag
 * **Ignored apps** — manage what's never tracked
 * **Open data folder** · **Quit**
 

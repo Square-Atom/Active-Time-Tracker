@@ -3,6 +3,33 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## [Unreleased]
+
+### Added
+- **Tags.** Right-click an app, one of its files, or a website under a browser
+  and file it under a tag — an existing one or a new one. Anything can carry
+  several tags, and its time counts toward each of them, so you can ask "how
+  much went into this project" when the answer is spread across a code editor,
+  a paint program and a couple of websites.
+- **A Tags mode for the list.** The switch above the chart (top right) flips
+  between one row per app and one row per tag, over the same range and total.
+  Expand a tag to see what's in it; whatever carries no tag is gathered under
+  **Untagged**.
+- **A Tags window** (the `#` button, or **Tags…** in the tray menu): tags on the
+  left, everything filed under the selected one on the right, with **✕** to take
+  an item out. New, rename and delete are under the list.
+
+### Changed
+- **App groups are gone, replaced by tags.** Grouping several executables into
+  one app row turned out to be a clumsy way to answer "where did this project's
+  time go" — it only worked for whole programs, an exe could only be in one
+  group, and it hid the real apps. Existing groups are carried over as tags with
+  the same names, so their totals are still a click away in the Tags view; the
+  app list now always shows real applications.
+
+  As before, none of this touches what was recorded: tags are applied when your
+  stats are displayed, so they're retroactive and reversible.
+
 ## [1.6.0] — 2026-09-17
 
 ### Added

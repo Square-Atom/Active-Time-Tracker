@@ -5,8 +5,8 @@ import types
 
 import config
 import pytest
-from dashboard import (PANEL, Dashboard, RangeState, _blend, color_for,
-                       fmt_duration)
+from dashboard import (APPS, PANEL, TAGS, Dashboard, RangeState, _blend,
+                       color_for, fmt_duration)
 
 
 # --- pure logic ------------------------------------------------------------
@@ -239,7 +239,7 @@ def test_app_level_apps_are_not_expandable(dash, tk_root, store, cfg, today):
     store.add_seconds(today, "game.exe", "Game", "", 100)
     dash.refresh(); _drawn(dash, tk_root)
 
-    assert dash._rows[0]["has_files"] is False
+    assert dash._rows[0]["expandable"] is False
     assert _click(dash, "game.exe") is None      # click does nothing
     _drawn(dash, tk_root)
     assert [r["kind"] for r in dash._rows] == ["app"]
@@ -305,8 +305,8 @@ def test_names_line_up_whether_or_not_a_row_expands(dash, tk_root, store, cfg, t
     store.add_seconds(today, "explorer.exe", "File Explorer", "", 100)
     dash.refresh(); _drawn(dash, tk_root)
 
-    expandable = [r for r in dash._rows if r["has_files"]]
-    plain = [r for r in dash._rows if not r["has_files"]]
+    expandable = [r for r in dash._rows if r["expandable"]]
+    plain = [r for r in dash._rows if not r["expandable"]]
     assert expandable and plain, "need one of each for this to mean anything"
 
     c = dash.chart
@@ -437,22 +437,138 @@ def test_note_appears_only_while_expanded_and_matches_the_kind(
     assert "Sites" in dash.chart_note.cget("text")
 
 
-def test_merged_group_appears_as_one_row(tk_root, store, cfg, today):
-    store.add_seconds(today, "godot.exe", "Godot", "main.tscn", 100)
-    store.add_seconds(today, "godot_console.exe", "Godot", "", 50)
-    cfg.merges = [{"name": "Godot",
-                   "members": ["godot.exe", "godot_console.exe"]}]
-    tracker = types.SimpleNamespace(cfg=cfg, paused=False, is_active=False,
-                                    current_app_name="", current_file="")
-    dash = Dashboard(tk_root, store, tracker=tracker)
+# --- tags mode -------------------------------------------------------------
+
+def test_tags_mode_totals_each_tag_and_names_the_rest(dash, tk_root, store,
+                                                      cfg, today):
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
+    store.add_seconds(today, "chrome.exe", "Chrome", "GitHub", 50)
+    store.add_seconds(today, "chrome.exe", "Chrome", "YouTube", 200)
+    cfg.set_item_tag("Work", "code.exe", None, True)
+    cfg.set_item_tag("Work", "chrome.exe", "GitHub", True)
+
+    dash._set_chart_mode(TAGS); _drawn(dash, tk_root)
+    rows = [(r["label"], r["seconds"]) for r in dash._rows if r["kind"] == "tag"]
+    assert rows == [("Work", 150), ("Untagged", 200)]
+    # the total across the top stays the same however it's sliced
+    assert dash.total_label.cget("text") == fmt_duration(350)
+
+    dash._set_chart_mode(APPS); _drawn(dash, tk_root)
+    assert [r["key"] for r in dash._rows] == ["chrome.exe", "code.exe"]
+
+
+def test_a_tag_expands_to_what_is_in_it(dash, tk_root, store, cfg, today):
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
+    store.add_seconds(today, "chrome.exe", "Chrome", "GitHub", 50)
+    cfg.set_item_tag("Work", "code.exe", None, True)
+    cfg.set_item_tag("Work", "chrome.exe", "GitHub", True)
+    dash._set_chart_mode(TAGS); _drawn(dash, tk_root)
+
+    _click(dash, "tag::Work"); _drawn(dash, tk_root)
+    items = [(r["label"], r["seconds"]) for r in dash._rows if r["kind"] == "item"]
+    assert items == [("VS Code", 100), ("GitHub  ·  Chrome", 50)]
+
+    # switching away and back keeps the row open
+    dash._set_chart_mode(APPS); dash._set_chart_mode(TAGS)
+    _drawn(dash, tk_root)
+    assert any(r["kind"] == "item" for r in dash._rows)
+
+
+def test_tagging_from_the_chart_reaches_the_config_and_the_view(
+        dash, tk_root, store, cfg, today):
+    store.add_seconds(today, "chrome.exe", "Chrome", "GitHub", 50)
     dash.refresh(); _drawn(dash, tk_root)
+    _click(dash, "chrome.exe"); _drawn(dash, tk_root)
+    file_row = next(r for r in dash._rows if r["kind"] == "file")
 
-    keys = [r["key"] for r in dash._rows]
-    assert keys == ["merge::Godot"]
+    dash._ctx_set_tag("Work", file_row["app"], file_row["file"], True)
+    assert cfg.tags_for("chrome.exe", "GitHub") == ["Work"]
 
-    _click(dash, "merge::Godot"); _drawn(dash, tk_root)
-    files = [r["label"] for r in dash._rows if r["kind"] == "file"]
-    assert "main.tscn" in files, "a group expands to its members' files"
+    dash._set_chart_mode(TAGS); _drawn(dash, tk_root)
+    assert [r["label"] for r in dash._rows if r["kind"] == "tag"] == ["Work"]
+
+    dash._ctx_set_tag("Work", "chrome.exe", "GitHub", False)
+    _drawn(dash, tk_root)
+    # emptied, but the tag itself stays until it's deleted
+    assert [(r["label"], r["seconds"]) for r in dash._rows if r["kind"] == "tag"]         == [("Work", 0.0), ("Untagged", 50)]
+
+
+def _labels(menu):
+    """Menu entry labels, skipping separators."""
+    end = menu.index("end")
+    return [menu.entrycget(i, "label") for i in range(end + 1)
+            if menu.type(i) != "separator"]
+
+
+def test_right_clicking_a_file_offers_its_own_tags(dash, tk_root, store, cfg,
+                                                   today):
+    """The Tags submenu acts on the row itself — the site, not the browser."""
+    store.add_seconds(today, "chrome.exe", "Chrome", "GitHub", 50)
+    cfg.set_item_tag("Work", "chrome.exe", "GitHub", True)
+    cfg.create_tag("Play")
+    dash.refresh(); _drawn(dash, tk_root)
+    _click(dash, "chrome.exe"); _drawn(dash, tk_root)
+    file_row = next(r for r in dash._rows if r["kind"] == "file")
+
+    menu = dash._menu()
+    dash._fill_app_menu(menu, cfg, file_row,
+                        types.SimpleNamespace(x_root=0, y_root=0))
+    assert _labels(menu)[0] == "Tags"
+
+    sub = dash._tag_submenu(menu, file_row["app"], file_row["file"], "GitHub")
+    assert _labels(sub) == ["Work", "Play", "New tag\u2026"]
+    assert [v.get() for v in dash._ctx_tag_vars] == [True, False]
+
+
+def test_a_tagged_item_can_be_taken_out_from_the_chart(dash, tk_root, store,
+                                                       cfg, today):
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
+    cfg.set_item_tag("Work", "code.exe", "main.py", True)
+    dash._set_chart_mode(TAGS); _drawn(dash, tk_root)
+    _click(dash, "tag::Work"); _drawn(dash, tk_root)
+    item = next(r for r in dash._rows if r["kind"] == "item")
+
+    menu = dash._menu()
+    dash._fill_tag_menu(menu, item, types.SimpleNamespace(x_root=0, y_root=0))
+    assert _labels(menu) == ['Remove from "Work"']
+
+    menu.invoke(0)
+    assert cfg.tags_for("code.exe", "main.py") == []
+
+
+def test_untagged_rows_offer_a_way_in_and_the_summary_row_no_menu(
+        dash, tk_root, store, cfg, today):
+    store.add_seconds(today, "game.exe", "Game", "", 100)
+    cfg.create_tag("Work")
+    dash._set_chart_mode(TAGS); _drawn(dash, tk_root)
+    _click(dash, config.UNTAGGED_KEY); _drawn(dash, tk_root)
+
+    summary = next(r for r in dash._rows if r["kind"] == "tag" and r["tag"] is None)
+    menu = dash._menu()
+    dash._fill_tag_menu(menu, summary, types.SimpleNamespace(x_root=0, y_root=0))
+    assert menu.index("end") is None, "nothing to edit about 'Untagged' itself"
+
+    item = next(r for r in dash._rows if r["kind"] == "item")
+    dash._fill_tag_menu(menu, item, types.SimpleNamespace(x_root=0, y_root=0))
+    assert _labels(menu) == ["Add to tag"]
+
+
+def test_renaming_a_tag_carries_its_colour(dash, cfg, monkeypatch):
+    import tags as tags_mod
+    cfg.create_tag("Work")
+    cfg.app_colors["tag::Work"] = "#123456"
+    monkeypatch.setattr(tags_mod, "ask_tag_name",
+                        lambda *a, **k: "Day job")
+    dash._ctx_rename_tag("Work")
+    assert cfg.tag_names() == ["Day job"]
+    assert cfg.app_colors == {"tag::Day job": "#123456"}
+
+
+def test_tags_mode_says_so_when_there_are_no_tags(dash, tk_root, store, today):
+    store.add_seconds(today, "code.exe", "VS Code", "", 100)
+    dash._set_chart_mode(TAGS); _drawn(dash, tk_root)
+    assert dash._rows == []
+    assert any("No tags yet" in t for t in _texts(dash.chart))
 
 
 def test_right_click_actions_update_config(dash, tk_root, store, cfg, today):

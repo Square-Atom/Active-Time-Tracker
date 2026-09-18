@@ -32,7 +32,7 @@ import updater
 from appicon import make_clock_image
 from dashboard import Dashboard
 from ignoreapps import IgnoreWindow
-from merges import MergesWindow
+from tags import TagsWindow
 from restore import RestoreWindow
 from settings import SettingsWindow
 from storage import Storage
@@ -148,9 +148,9 @@ def main() -> None:
     if cfg.timeline_enabled and cfg.note_hotkey:
         apply_hotkey(cfg.note_hotkey)
 
-    # --- settings / groups windows (single instance each) -----------------
+    # --- settings / tags windows (single instance each) --------------------
     settings_holder: dict[str, SettingsWindow | None] = {"win": None}
-    merges_holder: dict[str, MergesWindow | None] = {"win": None}
+    tags_holder: dict[str, TagsWindow | None] = {"win": None}
     ignore_holder: dict[str, IgnoreWindow | None] = {"win": None}
     restore_holder: dict[str, RestoreWindow | None] = {"win": None}
 
@@ -192,17 +192,17 @@ def main() -> None:
             open_ignore=open_ignore, open_restore=open_restore,
             apply_hotkey=apply_hotkey)
 
-    def open_merges():
-        existing = merges_holder["win"]
+    def open_tags():
+        existing = tags_holder["win"]
         if existing is not None and existing.win.winfo_exists():
             existing.win.lift()
             existing.win.focus_force()
             return
-        merges_holder["win"] = MergesWindow(
+        tags_holder["win"] = TagsWindow(
             root, cfg, storage, on_change=on_settings_changed)
 
     dashboard.open_settings_cb = open_settings
-    dashboard.open_merges_cb = open_merges
+    dashboard.open_tags_cb = open_tags
 
     # --- tray icon ---------------------------------------------------------
     def do_show(icon=None, item=None):
@@ -211,8 +211,8 @@ def main() -> None:
     def do_settings(icon, item):
         root.after(0, open_settings)
 
-    def do_merges(icon, item):
-        root.after(0, open_merges)
+    def do_tags(icon, item):
+        root.after(0, open_tags)
 
     def do_ignore(icon, item):
         root.after(0, open_ignore)
@@ -264,7 +264,7 @@ def main() -> None:
                          checked=lambda item: cfg.autostart),
         pystray.Menu.SEPARATOR,
         pystray.MenuItem("Settings…", do_settings),
-        pystray.MenuItem("App groups…", do_merges),
+        pystray.MenuItem("Tags…", do_tags),
         pystray.MenuItem("Ignored apps…", do_ignore),
         pystray.MenuItem("Open data folder", do_open_folder),
         pystray.MenuItem("Open backups folder", do_open_backups),

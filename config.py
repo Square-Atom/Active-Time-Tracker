@@ -271,9 +271,11 @@ DEFAULTS = {
     "autostart": True,
     "ignore_apps": [],  # exe names to never track, e.g. ["lockapp.exe"]
     "file_rules": {},    # user overrides merged over DEFAULT_FILE_RULES
-    # Groups of exes counted as one app in reports (non-destructive, applied at
-    # read time), e.g. [{"name": "Godot", "members": ["godot.exe", "godot_console.exe"]}]
-    "merges": [],
+    # Tags: named buckets of apps / files / sites, used by the chart's Tags
+    # mode. Applied at read time, so tagging is retroactive and reversible.
+    # e.g. [{"name": "Work", "items": [{"app": "code.exe"},
+    #                                  {"app": "chrome.exe", "file": "GitHub"}]}]
+    "tags": [],
     "check_updates_on_startup": True,
     # Daily rotating backups of data.db (+ config.json).
     "backup_enabled": True,
@@ -293,7 +295,58 @@ DEFAULTS = {
     "note_hotkey": "",
 }
 
-MERGE_PREFIX = "merge::"  # synthetic app key for a merged group
+TAG_PREFIX = "tag::"        # synthetic chart key for a tag row
+UNTAGGED_KEY = "\x00untagged"   # chart key for everything in no tag at all
+
+
+def tag_key(name: str) -> str:
+    return TAG_PREFIX + name
+
+
+def item_key(app: str, file: str | None = None) -> tuple[str, str | None]:
+    """Normalised identity of something taggable.
+
+    `file=None` means the whole app (all of its time, whatever the file); a
+    string — including "" — means that one file/site inside the app, where ""
+    is the app's untitled time, the "(no file)" row in the breakdown.
+    """
+    return ((app or "").strip().lower(), file)
+
+
+def _clean_items(raw) -> list[dict]:
+    """Stored items -> normalised, de-duplicated [{app, file?}]."""
+    out: list[dict] = []
+    seen: set[tuple[str, str | None]] = set()
+    for entry in raw or []:
+        if isinstance(entry, str):          # tolerate a bare exe name
+            entry = {"app": entry}
+        if not isinstance(entry, dict):
+            continue
+        app, file = item_key(entry.get("app", ""), entry.get("file"))
+        if not app or (app, file) in seen:
+            continue
+        seen.add((app, file))
+        out.append({"app": app} if file is None else {"app": app, "file": file})
+    return out
+
+
+def clean_tags(raw) -> list[dict]:
+    """Stored tags -> normalised [{name, items}], dropping unusable entries.
+
+    Names are kept as typed but must be unique, since a tag is addressed by
+    its name everywhere else (chart key, colour, menus).
+    """
+    out: list[dict] = []
+    seen: set[str] = set()
+    for entry in raw or []:
+        if not isinstance(entry, dict):
+            continue
+        name = (entry.get("name") or "").strip()
+        if not name or name.casefold() in seen:
+            continue
+        seen.add(name.casefold())
+        out.append({"name": name, "items": _clean_items(entry.get("items"))})
+    return out
 
 
 @dataclass
@@ -304,7 +357,7 @@ class Config:
     autostart: bool = True
     ignore_apps: list[str] = field(default_factory=list)
     file_rules: dict[str, list[str]] = field(default_factory=dict)
-    merges: list[dict] = field(default_factory=list)
+    tags: list[dict] = field(default_factory=list)
     check_updates_on_startup: bool = True
     backup_enabled: bool = True
     backup_dir: str = ""
@@ -322,7 +375,7 @@ class Config:
             "autostart": self.autostart,
             "ignore_apps": self.ignore_apps,
             "file_rules": self.file_rules,
-            "merges": self.merges,
+            "tags": self.tags,
             "check_updates_on_startup": self.check_updates_on_startup,
             "backup_enabled": self.backup_enabled,
             "backup_dir": self.backup_dir,
@@ -343,27 +396,79 @@ class Config:
         rules.update(self.file_rules)
         return rules
 
-    def merge_map(self) -> dict[str, tuple[str, str]]:
-        """member_exe -> (group_key, group_name) for read-time app merging."""
-        out: dict[str, tuple[str, str]] = {}
-        for g in self.merges:
-            name = (g.get("name") or "Merged").strip() or "Merged"
-            key = MERGE_PREFIX + name
-            for member in g.get("members", []):
-                m = member.strip().lower()
-                if m:
-                    out[m] = (key, name)
-        return out
+    # -- tags -------------------------------------------------------------
 
-    def group_members(self) -> dict[str, list[str]]:
-        """group_key -> [member exes]."""
-        out: dict[str, list[str]] = {}
-        for g in self.merges:
-            name = (g.get("name") or "Merged").strip() or "Merged"
-            key = MERGE_PREFIX + name
-            members = [m.strip().lower() for m in g.get("members", []) if m.strip()]
-            out.setdefault(key, []).extend(members)
-        return out
+    def tag_names(self) -> list[str]:
+        return [t["name"] for t in self.tags]
+
+    def _find_tag(self, name: str) -> dict | None:
+        fold = (name or "").strip().casefold()
+        for t in self.tags:
+            if t.get("name", "").casefold() == fold:
+                return t
+        return None
+
+    def tag_items(self, name: str) -> list[tuple[str, str | None]]:
+        """The (app, file) items of one tag; `file` is None for a whole app."""
+        tag = self._find_tag(name)
+        if not tag:
+            return []
+        return [item_key(i.get("app", ""), i.get("file"))
+                for i in tag.get("items", [])]
+
+    def tags_for(self, app: str, file: str | None = None) -> list[str]:
+        """Tags this exact item belongs to (an app row, or one file row)."""
+        want = item_key(app, file)
+        return [t["name"] for t in self.tags if want in self.tag_items(t["name"])]
+
+    def create_tag(self, name: str) -> str:
+        """Add an empty tag, returning the name it actually got.
+
+        Names have to stay unique — a tag is addressed by name everywhere —
+        so a clashing one is suffixed rather than silently merged.
+        """
+        base = (name or "").strip() or "New tag"
+        candidate, n = base, 2
+        while self._find_tag(candidate):
+            candidate = f"{base} ({n})"
+            n += 1
+        self.tags.append({"name": candidate, "items": []})
+        return candidate
+
+    def delete_tag(self, name: str) -> None:
+        tag = self._find_tag(name)
+        if tag:
+            self.tags.remove(tag)
+
+    def rename_tag(self, name: str, new_name: str) -> str:
+        """Rename in place, returning the name used ('' if it wasn't possible)."""
+        tag = self._find_tag(name)
+        new = (new_name or "").strip()
+        if not tag or not new:
+            return ""
+        clash = self._find_tag(new)
+        if clash is not None and clash is not tag:
+            return ""
+        tag["name"] = new
+        return new
+
+    def set_item_tag(self, name: str, app: str, file: str | None,
+                     on: bool) -> None:
+        """Put an item in a tag, or take it out. Creates the tag if needed."""
+        tag = self._find_tag(name)
+        if tag is None:
+            if not on:
+                return
+            self.create_tag(name)
+            tag = self._find_tag(name)
+            assert tag is not None
+        key = item_key(app, file)
+        items = tag.setdefault("items", [])
+        kept = [i for i in items if item_key(i.get("app", ""), i.get("file")) != key]
+        if on:
+            entry = {"app": key[0]} if key[1] is None else {"app": key[0], "file": key[1]}
+            kept.append(entry)
+        tag["items"] = kept
 
     def tracks_files(self, exe: str) -> bool:
         """Whether this app is currently split by file (vs. app-level only)."""
@@ -398,6 +503,22 @@ def _backup_minutes(data: dict) -> int:
     return max(1, min(value, 24 * 60))
 
 
+def _tags_from(stored: dict) -> list[dict]:
+    """Tags as stored, carrying over the app groups they replaced.
+
+    <= 1.6 had "merges", which counted several exes as one app. A group makes
+    a perfectly good tag — same name, its members as whole-app items — so an
+    upgrade keeps the grouping as something the Tags view can still show.
+    """
+    if "tags" in stored:
+        return clean_tags(stored["tags"])
+    groups = stored.get("merges") or []
+    carried = [{"name": g.get("name") or "Merged",
+                "items": [{"app": m} for m in g.get("members", [])]}
+               for g in groups if isinstance(g, dict)]
+    return clean_tags(carried)
+
+
 def load() -> Config:
     data = dict(DEFAULTS)
     stored: dict = {}          # only what the file actually said
@@ -415,7 +536,9 @@ def load() -> Config:
         autostart=data.get("autostart", True),
         ignore_apps=[a.lower() for a in data.get("ignore_apps", [])],
         file_rules=data.get("file_rules", {}),
-        merges=data.get("merges", []),
+        # From `stored` for the same reason as the backup interval below: the
+        # defaults carry an empty "tags", which would mask an older config.
+        tags=_tags_from(stored),
         check_updates_on_startup=data.get("check_updates_on_startup", True),
         backup_enabled=data.get("backup_enabled", True),
         backup_dir=data.get("backup_dir", ""),

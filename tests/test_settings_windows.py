@@ -1,4 +1,4 @@
-"""The editor windows: Settings, Ignored apps, and App groups."""
+"""The editor windows: Settings, Ignored apps, and Tags."""
 
 import os
 import types
@@ -9,7 +9,7 @@ import pytest
 import updatedialog
 import updater
 from ignoreapps import IgnoreWindow
-from merges import MergesWindow
+from tags import TagsWindow
 from settings import SettingsWindow
 
 
@@ -262,22 +262,65 @@ def test_declining_the_confirmation_changes_nothing(restore_win, store,
     assert store.grand_total(today, today) == before
 
 
-# --- app groups ------------------------------------------------------------
+# --- tags ------------------------------------------------------------------
 
-def test_groups_window_saves_and_drops_empties(tk_root, store, cfg, today):
-    store.add_seconds(today, "godot.exe", "Godot", "", 100)
-    win = MergesWindow(tk_root, cfg, store)
+@pytest.fixture
+def tagwin(tk_root, store, cfg, today):
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
+    win = TagsWindow(tk_root, cfg, store)
+    tk_root.update_idletasks()
+    yield win
+    try:
+        win.close()
+    except Exception:
+        pass
+
+
+def _item_rows(win):
+    return win.items_inner.winfo_children()
+
+
+def test_new_tag_is_created_and_selected(tagwin, tk_root, cfg, monkeypatch):
+    import tags as tags_mod
+    monkeypatch.setattr(tags_mod, "ask_tag_name", lambda *a, **k: "Work")
+    tagwin._new_tag()
     tk_root.update_idletasks()
 
-    win._new_group()
-    win.name_var.set("Godot")
-    win._on_name_change()
-    win.member_combo.set("godot.exe")
-    win._add_member()
-    win._new_group()                      # left empty on purpose
-    win._save()
+    assert cfg.tag_names() == ["Work"]
+    assert tagwin.current == "Work"
+    assert tagwin.taglist.get(0).startswith("Work")
 
-    assert cfg.merges == [{"name": "Godot", "members": ["godot.exe"]}]
+
+def test_items_are_listed_with_a_remove_button(tagwin, tk_root, cfg):
+    cfg.set_item_tag("Work", "code.exe", "main.py", True)
+    cfg.set_item_tag("Work", "code.exe", None, True)
+    tagwin._populate_tags(select="Work")
+    tk_root.update_idletasks()
+
+    labels = [w.winfo_children()[0].cget("text") for w in _item_rows(tagwin)]
+    assert labels == ["main.py  ·  VS Code", "VS Code"]
+    assert tagwin.taglist.get(0) == "Work  ·  2"
+
+    tagwin._remove("code.exe", "main.py")
+    tk_root.update_idletasks()
+    assert cfg.tag_items("Work") == [("code.exe", None)]
+    assert len(_item_rows(tagwin)) == 1
+
+
+def test_deleting_a_tag_asks_first(tagwin, tk_root, cfg, monkeypatch):
+    from tkinter import messagebox
+    cfg.set_item_tag("Work", "code.exe", None, True)
+    tagwin._populate_tags(select="Work")
+
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: False)
+    tagwin._delete_tag()
+    assert cfg.tag_names() == ["Work"]
+
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: True)
+    tagwin._delete_tag()
+    tk_root.update_idletasks()
+    assert cfg.tag_names() == []
+    assert tagwin.current is None
 
 
 # --- timeline tab ------------------------------------------------------------

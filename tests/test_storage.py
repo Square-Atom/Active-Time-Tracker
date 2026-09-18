@@ -1,4 +1,4 @@
-"""Buffered writes and read-time aggregation (merges, ignores, ranges)."""
+"""Buffered writes and read-time aggregation (tags, ignores, ranges)."""
 
 import os
 import sqlite3
@@ -35,35 +35,71 @@ def test_range_filtering(store):
         "2026-01-05": 100, "2026-02-05": 50}
 
 
-def test_merges_fold_at_read_time_without_touching_raw_rows(store, today):
-    store.add_seconds(today, "godot.exe", "Godot", "main.tscn", 100)
-    store.add_seconds(today, "godot_console.exe", "Godot", "", 50)
-    store.add_seconds(today, "chrome.exe", "Chrome", "", 200)
-    cfg = config.Config(merges=[
-        {"name": "Godot", "members": ["godot.exe", "godot_console.exe"]}])
+def test_tags_fold_at_read_time_without_touching_raw_rows(store, today):
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
+    store.add_seconds(today, "chrome.exe", "Chrome", "GitHub", 50)
+    store.add_seconds(today, "chrome.exe", "Chrome", "YouTube", 200)
+    cfg = config.Config()
+    cfg.set_item_tag("Work", "code.exe", None, True)
+    cfg.set_item_tag("Work", "chrome.exe", "GitHub", True)
 
-    merged = {a["app"]: a["seconds"] for a in
-              store.totals_by_app(today, today, cfg.merge_map())}
-    assert merged["merge::Godot"] == 150
-    assert merged["chrome.exe"] == 200
+    totals = {t["name"]: t["seconds"] for t in
+              store.totals_by_tag(today, today, cfg.tags)}
+    assert totals["Work"] == 150
+    assert totals["Untagged"] == 200, "YouTube belongs to no tag"
 
-    # the underlying per-exe rows survive, so merging stays reversible
-    raw = {a["app"] for a in store.totals_by_app(today, today)}
-    assert {"godot.exe", "godot_console.exe"} <= raw
+    # the underlying per-app rows survive, so tagging stays reversible
+    raw = {a["app"]: a["seconds"] for a in store.totals_by_app(today, today)}
+    assert raw == {"code.exe": 100, "chrome.exe": 250}
 
 
-def test_group_file_breakdown_spans_members(store, today):
-    store.add_seconds(today, "godot.exe", "Godot", "main.tscn", 100)
-    store.add_seconds(today, "godot_console.exe", "Godot", "main.tscn", 20)
-    files = store.totals_by_file(today, today, ["godot.exe", "godot_console.exe"])
-    assert {f["file"]: f["seconds"] for f in files} == {"main.tscn": 120}
+def test_an_item_in_two_tags_counts_toward_both(store, today):
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
+    cfg = config.Config()
+    cfg.set_item_tag("Work", "code.exe", "main.py", True)
+    cfg.set_item_tag("Python", "code.exe", "main.py", True)
+    totals = {t["name"]: t["seconds"] for t in
+              store.totals_by_tag(today, today, cfg.tags)}
+    assert totals == {"Work": 100, "Python": 100}
+
+
+def test_a_tagged_app_counts_its_files_once_even_if_they_are_tagged_too(
+        store, today):
+    """Tag totals overlap each other, but never double inside one tag."""
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
+    store.add_seconds(today, "code.exe", "VS Code", "test.py", 20)
+    cfg = config.Config()
+    cfg.set_item_tag("Work", "code.exe", None, True)
+    cfg.set_item_tag("Work", "code.exe", "main.py", True)
+    tag = store.totals_by_tag(today, today, cfg.tags)[0]
+    assert tag["seconds"] == 120
+    assert [(i["file"], i["seconds"]) for i in tag["items"]] == [(None, 120)]
+
+
+def test_an_empty_tag_still_shows_up(store, today):
+    store.add_seconds(today, "code.exe", "VS Code", "", 100)
+    cfg = config.Config()
+    cfg.create_tag("Someday")
+    rows = store.totals_by_tag(today, today, cfg.tags)
+    assert [(t["name"], t["seconds"]) for t in rows] == [
+        ("Someday", 0.0), ("Untagged", 100)]
+
+
+def test_totals_by_app_file_splits_app_level_time_from_files(store, today):
+    store.add_seconds(today, "code.exe", "VS Code", "", 30)
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
+    rows = {(r["app"], r["file"]): r["seconds"]
+            for r in store.totals_by_app_file(today, today)}
+    assert rows == {("code.exe", ""): 30, ("code.exe", "main.py"): 100}
 
 
 def test_ignored_apps_are_excluded(store, today):
     store.add_seconds(today, "game.exe", "Game", "", 900)
     store.add_seconds(today, "code.exe", "VS Code", "", 100)
-    apps = store.totals_by_app(today, today, None, {"game.exe"})
+    apps = store.totals_by_app(today, today, {"game.exe"})
     assert [a["app"] for a in apps] == ["code.exe"]
+    assert [r["app"] for r in
+            store.totals_by_app_file(today, today, {"game.exe"})] == ["code.exe"]
 
 
 def test_known_apps_is_busiest_first(store, today):

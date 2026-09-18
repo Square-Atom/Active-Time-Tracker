@@ -6,8 +6,8 @@ the same app, split from its neighbours by a thin dark line. Idle time is a
 dark block; time with no record at all (computer off, app closed, tracking
 paused) is left black.
 
-Merges and ignores are applied here, at read time, exactly as the app list
-applies them — an ignored app's blocks read as "Not tracked".
+The ignore list is applied here, at read time, exactly as the app list
+applies it — an ignored app's blocks read as "Not tracked".
 """
 
 from __future__ import annotations
@@ -41,19 +41,17 @@ TICK_MIN_PX = 64
 NOTE_HIT_PX = 7
 
 
-def build_blocks(segments, merge_map=None, ignore=()) -> list[dict]:
+def build_blocks(segments, ignore=()) -> list[dict]:
     """Turn stored segments into display blocks.
 
-    Applies app groups and the ignore list, then joins blocks that touch and
-    now share a key (two members of one group, back to back).
+    Applies the ignore list, then joins blocks that touch and share a key (the
+    same app either side of a moment we stopped naming).
     """
-    merge_map = merge_map or {}
     ignore = set(ignore)
     blocks: list[dict] = []
     for seg in segments:
         if seg["state"] == storage_mod.ACTIVE and seg["app"] not in ignore:
-            key, name = merge_map.get(seg["app"], (seg["app"], seg["app_name"]))
-            kind = "app"
+            key, name, kind = seg["app"], seg["app_name"], "app"
         elif seg["state"] == storage_mod.IDLE:
             key, name, kind = "\x00idle", "Idle", "idle"
         else:
@@ -327,7 +325,6 @@ class TimelineView(ttk.Frame):
         self.color_for = color_for
         self.on_change = on_change
         self.day = dt.date.today()
-        self.merge_map: dict = {}
         self.ignore: set = set()
         self.blocks: list[dict] = []
         self.notes: dict[str, str] = {}
@@ -364,12 +361,11 @@ class TimelineView(ttk.Frame):
 
     # -- data -------------------------------------------------------------
 
-    def load(self, day: dt.date, merge_map=None, ignore=()) -> None:
+    def load(self, day: dt.date, ignore=()) -> None:
         self.day = day
-        self.merge_map = merge_map or {}
         self.ignore = set(ignore)
         segments = self.storage.timeline_for_day(day.isoformat())
-        self.blocks = build_blocks(segments, self.merge_map, self.ignore)
+        self.blocks = build_blocks(segments, self.ignore)
         self.notes = self.storage.notes_for_day(day.isoformat())
         if self._actions and self._actions_ts not in self.notes:
             self.close_popups()
@@ -604,6 +600,6 @@ class TimelineView(ttk.Frame):
         self._changed()
 
     def _changed(self) -> None:
-        self.load(self.day, self.merge_map, self.ignore)
+        self.load(self.day, self.ignore)
         if self.on_change:
             self.on_change()

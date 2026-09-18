@@ -150,11 +150,73 @@ def test_invalid_user_regex_is_ignored_not_raised():
     assert config.parse_file("mytool.exe", "whatever.txt", rules) == ""
 
 
-# --- merges ----------------------------------------------------------------
+# --- tags ------------------------------------------------------------------
 
-def test_merge_map_and_members():
-    cfg = config.Config(merges=[
-        {"name": "Godot", "members": ["godot.exe", "godot_console.exe"]}])
-    assert cfg.merge_map()["godot.exe"] == ("merge::Godot", "Godot")
-    assert set(cfg.group_members()["merge::Godot"]) == {
-        "godot.exe", "godot_console.exe"}
+def test_an_item_can_be_an_app_or_one_file_inside_it():
+    cfg = config.Config()
+    cfg.create_tag("Work")
+    cfg.set_item_tag("Work", "Code.exe", None, True)        # the whole app
+    cfg.set_item_tag("Work", "chrome.exe", "GitHub", True)  # one site
+    assert cfg.tag_items("Work") == [("code.exe", None), ("chrome.exe", "GitHub")]
+    # the app entry and the file entry are different items, not the same one
+    assert cfg.tags_for("code.exe") == ["Work"]
+    assert cfg.tags_for("code.exe", "main.py") == []
+    assert cfg.tags_for("chrome.exe", "GitHub") == ["Work"]
+
+
+def test_one_item_can_carry_several_tags():
+    cfg = config.Config()
+    cfg.set_item_tag("Work", "code.exe", "main.py", True)   # creates the tag
+    cfg.set_item_tag("Side project", "code.exe", "main.py", True)
+    assert cfg.tags_for("code.exe", "main.py") == ["Work", "Side project"]
+
+    cfg.set_item_tag("Work", "code.exe", "main.py", False)
+    assert cfg.tags_for("code.exe", "main.py") == ["Side project"]
+
+
+def test_tagging_the_same_item_twice_does_not_duplicate_it():
+    cfg = config.Config()
+    cfg.set_item_tag("Work", "code.exe", None, True)
+    cfg.set_item_tag("Work", "CODE.exe", None, True)
+    assert cfg.tag_items("Work") == [("code.exe", None)]
+
+
+def test_tag_names_stay_unique():
+    cfg = config.Config()
+    assert cfg.create_tag("Work") == "Work"
+    assert cfg.create_tag("Work") == "Work (2)"
+    assert cfg.rename_tag("Work (2)", "Work") == "", "a clash is refused"
+    assert cfg.rename_tag("Work (2)", "Play") == "Play"
+    assert cfg.tag_names() == ["Work", "Play"]
+
+
+def test_deleting_a_tag_leaves_the_others_alone():
+    cfg = config.Config()
+    cfg.set_item_tag("Work", "code.exe", None, True)
+    cfg.set_item_tag("Play", "game.exe", None, True)
+    cfg.delete_tag("Work")
+    assert cfg.tag_names() == ["Play"]
+
+
+def test_unusable_tags_are_dropped_when_loaded():
+    tags = config.clean_tags([
+        {"name": "  Work  ", "items": [{"app": "Code.exe"}, "game.exe", {}]},
+        {"name": "", "items": []},          # nameless: dropped
+        {"name": "work", "items": []},      # duplicate name: dropped
+        "nonsense",
+    ])
+    assert [t["name"] for t in tags] == ["Work"]
+    assert tags[0]["items"] == [{"app": "code.exe"}, {"app": "game.exe"}]
+
+
+def test_app_groups_are_carried_over_as_tags(tmp_path, monkeypatch):
+    """<= 1.6 config: a group becomes a tag holding the same apps."""
+    import json
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({
+        "merges": [{"name": "Godot", "members": ["godot.exe", "godot_console.exe"]}]
+    }), encoding="utf-8")
+    monkeypatch.setattr(config, "CONFIG_PATH", str(path))
+    cfg = config.load()
+    assert cfg.tags == [{"name": "Godot", "items": [{"app": "godot.exe"},
+                                                    {"app": "godot_console.exe"}]}]

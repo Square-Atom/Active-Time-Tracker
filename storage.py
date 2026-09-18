@@ -89,6 +89,81 @@ def integrity_problem(path: str) -> str | None:
     return None if result == "ok" else result
 
 
+UNTAGGED_NAME = "Untagged"
+
+
+def item_label(app_name: str, file: str | None) -> str:
+    """How a tagged item reads in the chart: the app, or a file inside it."""
+    if file is None:
+        return app_name
+    return f"{file or '(no file)'}  ·  {app_name}"
+
+
+def fold_tags(rows, tags) -> list[dict]:
+    """Fold (app, file) totals into one row per tag, plus what's untagged.
+
+    `rows` are `totals_by_app_file` results; `tags` is `config.Config.tags`.
+    An item is either a whole app (no `file`) or one file/site inside it, and
+    a row counts toward *every* tag that claims it — so tag totals overlap by
+    design and don't add up to the grand total. Within a single tag a row is
+    counted once, even when both the app and the file are in that same tag.
+    """
+    if not tags:
+        return []
+    folded = []
+    for tag in tags:
+        name = tag.get("name", "")
+        apps, files = set(), set()
+        for entry in tag.get("items", []):
+            app, file = config.item_key(entry.get("app", ""), entry.get("file"))
+            (apps if file is None else files).add(app if file is None else (app, file))
+        folded.append({"key": config.tag_key(name), "name": name, "tag": name,
+                       "seconds": 0.0, "apps": apps, "files": files,
+                       "parts": defaultdict(float), "names": {}})
+
+    untagged: dict[str, dict] = {}
+    for row in rows:
+        app, file, seconds = row["app"], row["file"], row["seconds"]
+        claimed = False
+        for tag in folded:
+            if app in tag["apps"]:
+                part = (app, None)          # the whole app covers this row
+            elif (app, file) in tag["files"]:
+                part = (app, file)
+            else:
+                continue
+            claimed = True
+            tag["seconds"] += seconds
+            tag["parts"][part] += seconds
+            tag["names"][app] = row["app_name"]
+        if not claimed:
+            entry = untagged.setdefault(
+                app, {"app": app, "file": None, "app_name": row["app_name"],
+                      "label": row["app_name"], "seconds": 0.0,
+                      "key": config.UNTAGGED_KEY + "\x00" + app})
+            entry["seconds"] += seconds
+
+    out = []
+    for tag in folded:
+        items = []
+        for (app, file), seconds in tag["parts"].items():
+            app_name = tag["names"].get(app) or config.friendly_name(app)
+            items.append({"app": app, "file": file, "app_name": app_name,
+                          "label": item_label(app_name, file), "seconds": seconds,
+                          "key": f"{tag['key']}\x00{app}\x00{'' if file is None else file}"})
+        items.sort(key=lambda i: i["seconds"], reverse=True)
+        out.append({"key": tag["key"], "name": tag["name"], "tag": tag["tag"],
+                    "seconds": tag["seconds"], "items": items})
+    out.sort(key=lambda t: t["seconds"], reverse=True)
+
+    leftovers = sorted(untagged.values(), key=lambda i: i["seconds"], reverse=True)
+    if leftovers:
+        out.append({"key": config.UNTAGGED_KEY, "name": UNTAGGED_NAME, "tag": None,
+                    "seconds": sum(i["seconds"] for i in leftovers),
+                    "items": leftovers})
+    return out
+
+
 class Storage:
     def __init__(self, db_path: str = config.DB_PATH):
         self.db_path = db_path
@@ -351,10 +426,8 @@ class Storage:
                 if start <= day <= end:
                     yield day, app, app_name, file, seconds
 
-    def totals_by_app(self, start: str, end: str, merge_map=None, ignore=None) -> list[dict]:
-        """Totals per app. `merge_map` (member_exe -> (group_key, group_name))
-        folds member apps into a single group row at read time. `ignore` is a set
-        of exe names to exclude entirely."""
+    def totals_by_app(self, start: str, end: str, ignore=None) -> list[dict]:
+        """Totals per app, busiest first. `ignore` is a set of exes to skip."""
         self.flush()
         ignore = ignore or set()
         cur = self._conn.execute(
@@ -372,22 +445,41 @@ class Storage:
                 continue
             entry = rows.setdefault(app, {"app": app, "app_name": app_name, "seconds": 0.0})
             entry["seconds"] += seconds
+        return sorted(rows.values(), key=lambda r: r["seconds"], reverse=True)
 
-        if not merge_map:
-            return sorted(rows.values(), key=lambda r: r["seconds"], reverse=True)
+    def totals_by_app_file(self, start: str, end: str, ignore=None) -> list[dict]:
+        """Every (app, file) pair in the range — the grain tags work at.
 
-        folded: dict[str, dict] = {}
-        for entry in rows.values():
-            if entry["app"] in merge_map:
-                key, name = merge_map[entry["app"]]
-            else:
-                key, name = entry["app"], entry["app_name"]
-            f = folded.setdefault(key, {"app": key, "app_name": name, "seconds": 0.0})
-            f["seconds"] += entry["seconds"]
-        return sorted(folded.values(), key=lambda r: r["seconds"], reverse=True)
+        One row per file (and one with file='' for an app's untitled time), so
+        a tag can hold a whole app, a single file, or a single website.
+        """
+        self.flush()
+        ignore = ignore or set()
+        cur = self._conn.execute(
+            """
+            SELECT app, app_name, file, SUM(seconds) AS total
+            FROM activity WHERE day BETWEEN ? AND ?
+            GROUP BY app, file
+            """,
+            (start, end),
+        )
+        rows = {(r[0], r[2]): {"app": r[0], "app_name": r[1], "file": r[2],
+                               "seconds": r[3]}
+                for r in cur if r[0] not in ignore}
+        for _day, app, app_name, file, seconds in self._live_rows(start, end):
+            if app in ignore:
+                continue
+            entry = rows.setdefault((app, file), {"app": app, "app_name": app_name,
+                                                  "file": file, "seconds": 0.0})
+            entry["seconds"] += seconds
+        return sorted(rows.values(), key=lambda r: r["seconds"], reverse=True)
+
+    def totals_by_tag(self, start: str, end: str, tags, ignore=None) -> list[dict]:
+        """Totals per tag for the range (see `fold_tags`)."""
+        return fold_tags(self.totals_by_app_file(start, end, ignore), tags)
 
     def totals_by_file(self, start: str, end: str, apps) -> list[dict]:
-        """Totals per file across one app or several (a merged group)."""
+        """Totals per file for one app, or across several at once."""
         self.flush()
         app_list = [apps] if isinstance(apps, str) else list(apps)
         if not app_list:

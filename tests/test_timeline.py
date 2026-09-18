@@ -148,15 +148,13 @@ def _seg(state, start, end, app="", name=""):
             "app_name": name}
 
 
-def test_group_members_back_to_back_join_into_one_block():
-    merge = {"godot.exe": ("merge::Godot", "Godot"),
-             "godot_console.exe": ("merge::Godot", "Godot")}
+def test_back_to_back_blocks_of_one_app_join_up():
     blocks = timeline.build_blocks([
         _seg(ACTIVE, 0, 10, "godot.exe", "Godot"),
-        _seg(ACTIVE, 10, 20, "godot_console.exe", "Godot Console"),
-    ], merge)
+        _seg(ACTIVE, 10, 20, "godot.exe", "Godot"),
+    ])
     assert len(blocks) == 1
-    assert blocks[0]["key"] == "merge::Godot" and blocks[0]["end"] == 20
+    assert blocks[0]["key"] == "godot.exe" and blocks[0]["end"] == 20
 
 
 def test_ignored_apps_are_shown_without_their_name():

@@ -1,10 +1,10 @@
 """The tkinter dashboard window.
 
 Shows focus time for a selected range (Today / This Week / This Month), broken
-down by application, with a per-file breakdown for the selected app, a bar chart,
-a daily-trend chart for multi-day ranges, and a focus timeline with notes for
-single days. Charts are hand-drawn on a Canvas
-to keep dependencies minimal.
+down by application — or, in Tags mode, by the tags files and sites have been
+filed under. Either list expands a row to its parts, and there's a daily-trend
+chart for multi-day ranges plus a focus timeline with notes for single days.
+Charts are hand-drawn on a Canvas to keep dependencies minimal.
 """
 
 from __future__ import annotations
@@ -13,11 +13,11 @@ import calendar
 import datetime as dt
 import hashlib
 import tkinter as tk
-from tkinter import ttk
+from tkinter import messagebox, ttk
 
 import config
 import timeline
-from storage import Storage
+from storage import Storage, fold_tags
 
 # --- theme ---------------------------------------------------------------
 BG = "#1e1f2b"
@@ -30,6 +30,9 @@ BAR_COLORS = [
     "#82d8ff", "#f78c6c", "#a6e22e", "#ff9de2", "#8fd6a9",
 ]
 ROW_HOVER = "#383a58"   # readable against PANEL without shouting
+LEFTOVER = "#4a4c66"    # the "Untagged" bar: present, but not a tag
+APPS = "apps"           # chart modes: one row per application …
+TAGS = "tags"           # … or one row per tag, however its items are spread
 MARKER_W = 16    # expander column, so names line up whether or not one is shown
 FILE_INDENT = 18
 
@@ -217,14 +220,17 @@ class RangeState:
 
 class Dashboard:
     def __init__(self, root: tk.Tk, storage: Storage, tracker=None,
-                 open_settings=None, open_merges=None):
+                 open_settings=None, open_tags=None):
         self.root = root
         self.storage = storage
         self.tracker = tracker
         self.open_settings_cb = open_settings
-        self.open_merges_cb = open_merges
+        self.open_tags_cb = open_tags
         self.range = RangeState()
+        self.chart_mode = APPS           # APPS | TAGS
         self.expanded: set[str] = set()   # app keys whose files are shown
+        # Kept per mode: switching back should find the list as you left it.
+        self.expanded_tags: set[str] = set()
         self._refresh_job = None
         self._visible = False
         self._trend_height = 190  # default trend pane height (drag-adjustable)
@@ -234,9 +240,9 @@ class Dashboard:
         if self.open_settings_cb:
             self.open_settings_cb()
 
-    def _open_merges(self) -> None:
-        if self.open_merges_cb:
-            self.open_merges_cb()
+    def _open_tags(self) -> None:
+        if self.open_tags_cb:
+            self.open_tags_cb()
 
     # -- UI construction --------------------------------------------------
 
@@ -318,13 +324,13 @@ class Dashboard:
         actions.grid(row=0, column=2, sticky="e", padx=(10, 0))
         # Plain geometric glyphs, not emoji: emoji fall back to a boxed
         # placeholder in the UI font on Windows.
-        groups_btn = ttk.Button(actions, text="⧉", width=3, style="Icon.TButton",
-                                command=self._open_merges)
-        groups_btn.pack(side="left", padx=(0, 4))
+        tags_btn = ttk.Button(actions, text="#", width=3, style="Icon.TButton",
+                              command=self._open_tags)
+        tags_btn.pack(side="left", padx=(0, 4))
         settings_btn = ttk.Button(actions, text="⚙", width=3, style="Icon.TButton",
                                   command=self._open_settings)
         settings_btn.pack(side="left")
-        Tooltip(groups_btn, "App groups")
+        Tooltip(tags_btn, "Tags")
         Tooltip(settings_btn, "Settings")
 
         totalrow = ttk.Frame(self.root)
@@ -349,15 +355,28 @@ class Dashboard:
         body.rowconfigure(2, weight=1)
         self.main_paned.add(body, weight=4)
 
+        body.columnconfigure(1, weight=0)
         self.chart_title = ttk.Label(body, text="APPLICATIONS", style="Muted.TLabel")
         self.chart_title.grid(row=0, column=0, sticky="w", pady=(0, 4))
+
+        # Apps / Tags switch: the same range and total, counted two ways.
+        modes = ttk.Frame(body)
+        modes.grid(row=0, column=1, sticky="e", pady=(0, 4))
+        self.mode_buttons = {}
+        for mode, text in ((APPS, "Apps"), (TAGS, "Tags")):
+            b = ttk.Button(modes, text=text, style="Seg.TButton",
+                           width=len(text) + 1,
+                           command=lambda m=mode: self._set_chart_mode(m))
+            b.pack(side="left", padx=(6, 0))
+            self.mode_buttons[mode] = b
+
         # Only meaningful once a row is expanded: files/sites come from window
         # titles, so same-named entries can share a row.
         self.chart_note = ttk.Label(body, text="", style="Note.TLabel",
                                     wraplength=620, justify="left")
 
         chart_wrap = ttk.Frame(body)
-        chart_wrap.grid(row=2, column=0, sticky="nsew")
+        chart_wrap.grid(row=2, column=0, columnspan=2, sticky="nsew")
         chart_wrap.rowconfigure(0, weight=1)
         chart_wrap.columnconfigure(0, weight=1)
         self.chart = tk.Canvas(chart_wrap, bg=PANEL, highlightthickness=0, height=200)
@@ -394,6 +413,7 @@ class Dashboard:
             color_for=self._color_for)
 
         self._data_apps: list[dict] = []
+        self._data_tags: list[dict] = []               # tag rows + "Untagged"
         self._data_files: dict[str, list[dict]] = {}   # app key -> its files
         self._data_trend: dict[str, float] = {}
         self._grand = 0.0
@@ -405,6 +425,13 @@ class Dashboard:
     def _set_mode(self, mode: str) -> None:
         self.range.set_mode(mode)
         self.refresh()   # expanded rows persist; refresh drops any that vanish
+
+    def _set_chart_mode(self, mode: str) -> None:
+        if mode == self.chart_mode:
+            return
+        self.chart_mode = mode
+        self._set_hover(None)
+        self.refresh()
 
     def _nav(self, direction: int) -> None:
         self.range.shift(direction)
@@ -527,15 +554,14 @@ class Dashboard:
 
     def _on_chart_click(self, event):
         row = self._row_at(event)
-        if not row or row["kind"] != "app":
-            return None
-        if not row["has_files"]:
+        if not row or not row["expandable"]:
             return None                     # nothing to expand
+        expanded = self.expanded_tags if row["kind"] == "tag" else self.expanded
         key = row["key"]
-        if key in self.expanded:
-            self.expanded.discard(key)
+        if key in expanded:
+            expanded.discard(key)
         else:
-            self.expanded.add(key)
+            expanded.add(key)
         self.refresh()
         return "break"
 
@@ -545,8 +571,7 @@ class Dashboard:
         # rows get the hand cursor, since only those do something when clicked.
         row = self._row_at(event)
         self._set_hover(row["key"] if row else None,
-                        clickable=bool(row and row["kind"] == "app"
-                                       and row["has_files"]))
+                        clickable=bool(row and row["expandable"]))
 
     def _set_hover(self, key, clickable: bool = False) -> None:
         if key != self._hover:
@@ -570,8 +595,10 @@ class Dashboard:
 
     # -- right-click context menu ----------------------------------------
 
-    def _members_of(self, key: str) -> list[str]:
-        return getattr(self, "_app_members", {}).get(key, [key])
+    def _menu(self, parent=None) -> tk.Menu:
+        return tk.Menu(parent or self.root, tearoff=0, bg="#f6f6fa", fg="#1e1f2b",
+                       activebackground=ACCENT, activeforeground="#12131c",
+                       borderwidth=0, relief="flat")
 
     def _on_chart_right_click(self, event) -> None:
         cfg = self.tracker.cfg if self.tracker else None
@@ -580,32 +607,123 @@ class Dashboard:
         row = self._row_at(event)
         if not row:
             return
-        # Right-clicking a file acts on the app it belongs to.
-        key = row["key"] if row["kind"] == "app" else row["app"]
-        name = next((r["label"] for r in self._rows
-                     if r["kind"] == "app" and r["key"] == key), key)
-
-        members = [m for m in self._members_of(key) if not m.startswith(config.MERGE_PREFIX)]
-        tracks = bool(members) and all(cfg.tracks_files(m) for m in members)
-
-        menu = tk.Menu(self.root, tearoff=0, bg="#f6f6fa", fg="#1e1f2b",
-                       activebackground=ACCENT, activeforeground="#12131c",
-                       borderwidth=0, relief="flat")
-        self._ctx_track_var = tk.BooleanVar(value=tracks)
-        menu.add_checkbutton(label="Track files for this app",
-                             variable=self._ctx_track_var,
-                             command=lambda: self._ctx_toggle_track(members))
-        menu.add_command(label="Bar colour…",
-                         command=lambda: self._open_color_picker(key, name,
-                                                                 event.x_root,
-                                                                 event.y_root))
-        menu.add_separator()
-        menu.add_command(label=f'Add "{name}" to ignore list',
-                         command=lambda: self._ctx_ignore(members))
+        menu = self._menu()
+        if row["kind"] in ("tag", "item"):
+            self._fill_tag_menu(menu, row, event)
+        else:
+            self._fill_app_menu(menu, cfg, row, event)
+        if menu.index("end") is None:
+            return                          # nothing worth offering here
         try:
             menu.tk_popup(event.x_root, event.y_root)
         finally:
             menu.grab_release()
+
+    def _fill_app_menu(self, menu, cfg, row, event) -> None:
+        """Apps view: tag this exact row, plus the per-app settings."""
+        app = row["app"]
+        app_name = next((r["label"] for r in self._rows
+                         if r["kind"] == "app" and r["key"] == app), app)
+        menu.add_cascade(label="Tags", menu=self._tag_submenu(
+            menu, app, row["file"], row["label"]))
+        menu.add_separator()
+        self._ctx_track_var = tk.BooleanVar(value=cfg.tracks_files(app))
+        menu.add_checkbutton(label="Track files for this app",
+                             variable=self._ctx_track_var,
+                             command=lambda: self._ctx_toggle_track([app]))
+        menu.add_command(label="Bar colour…",
+                         command=lambda: self._open_color_picker(app, app_name,
+                                                                 event.x_root,
+                                                                 event.y_root))
+        menu.add_separator()
+        menu.add_command(label=f'Add "{app_name}" to ignore list',
+                         command=lambda: self._ctx_ignore([app]))
+
+    def _fill_tag_menu(self, menu, row, event) -> None:
+        """Tags view: edit the tag itself, or what's filed under it."""
+        tag = row.get("tag")
+        if row["kind"] == "item":
+            if tag is None:                 # something under "Untagged"
+                menu.add_cascade(label="Add to tag", menu=self._tag_submenu(
+                    menu, row["app"], row["file"], row["label"]))
+            else:
+                menu.add_command(
+                    label=f'Remove from "{tag}"',
+                    command=lambda: self._ctx_set_tag(tag, row["app"],
+                                                      row["file"], False))
+            return
+        if tag is None:
+            return                          # the "Untagged" row isn't editable
+        menu.add_command(label="Bar colour…",
+                         command=lambda: self._open_color_picker(row["key"], tag,
+                                                                 event.x_root,
+                                                                 event.y_root))
+        menu.add_separator()
+        menu.add_command(label="Rename tag…",
+                         command=lambda: self._ctx_rename_tag(tag))
+        menu.add_command(label=f'Delete tag "{tag}"',
+                         command=lambda: self._ctx_delete_tag(tag))
+
+    def _tag_submenu(self, parent, app: str, file: str | None, label: str) -> tk.Menu:
+        """A tick per tag for one item, plus a way to start a new one."""
+        cfg = self.tracker.cfg
+        sub = self._menu(parent)
+        current = set(cfg.tags_for(app, file))
+        # Tk only keeps a weak hold on control variables; without a reference
+        # of our own they're collected and every tick reads as off.
+        self._ctx_tag_vars = []
+        for name in cfg.tag_names():
+            var = tk.BooleanVar(value=name in current)
+            self._ctx_tag_vars.append(var)
+            sub.add_checkbutton(
+                label=name, variable=var,
+                command=lambda n=name, v=var: self._ctx_set_tag(n, app, file, v.get()))
+        if self._ctx_tag_vars:
+            sub.add_separator()
+        sub.add_command(label="New tag…",
+                        command=lambda: self._ctx_new_tag(app, file, label))
+        return sub
+
+    # -- tag actions ------------------------------------------------------
+
+    def _ctx_set_tag(self, name: str, app: str, file: str | None, on: bool) -> None:
+        cfg = self.tracker.cfg
+        cfg.set_item_tag(name, app, file, on)
+        cfg.save()
+        self.refresh()
+
+    def _ctx_new_tag(self, app: str, file: str | None, label: str) -> None:
+        from tags import ask_tag_name
+        cfg = self.tracker.cfg
+        name = ask_tag_name(self.root, "New tag", f'Tag "{label}" as:')
+        if not name:
+            return
+        self._ctx_set_tag(cfg.create_tag(name), app, file, True)
+
+    def _ctx_rename_tag(self, tag: str) -> None:
+        from tags import ask_tag_name
+        cfg = self.tracker.cfg
+        name = ask_tag_name(self.root, "Rename tag", "Tag name:", tag)
+        if not name or name == tag or not cfg.rename_tag(tag, name):
+            return
+        # A hand-picked colour is keyed by name, so carry it across.
+        color = cfg.app_colors.pop(config.tag_key(tag), None)
+        if color:
+            cfg.app_colors[config.tag_key(name)] = color
+        cfg.save()
+        self.refresh()
+
+    def _ctx_delete_tag(self, tag: str) -> None:
+        cfg = self.tracker.cfg
+        if not messagebox.askyesno(
+                "Delete tag",
+                f'Delete the tag "{tag}"?\n\nNothing is removed from your '
+                "history — only the tag itself goes away.", parent=self.root):
+            return
+        cfg.delete_tag(tag)
+        cfg.app_colors.pop(config.tag_key(tag), None)
+        cfg.save()
+        self.refresh()
 
     # -- bar colour -------------------------------------------------------
 
@@ -693,27 +811,34 @@ class Dashboard:
     def refresh(self) -> None:
         start, end = self.range.bounds()
         cfg = self.tracker.cfg if self.tracker else None
-        merge_map = cfg.merge_map() if cfg else None
-        group_members = cfg.group_members() if cfg else {}
         ignore = set(cfg.ignore_apps) if cfg else set()
-        self._data_apps = self.storage.totals_by_app(start, end, merge_map, ignore)
-        # display_key -> member exes (for the per-file breakdown of a group)
-        self._app_members = {
-            a["app"]: group_members.get(a["app"], [a["app"]]) for a in self._data_apps
-        }
-        self._grand = sum(a["seconds"] for a in self._data_apps)
+        if self.chart_mode == TAGS:
+            # One pass at the (app, file) grain: tags are folded from it, and
+            # its sum is the grand total — tag totals overlap, so they can't be.
+            rows = self.storage.totals_by_app_file(start, end, ignore)
+            self._data_apps = []
+            self._data_tags = fold_tags(rows, cfg.tags if cfg else [])
+            self._grand = sum(r["seconds"] for r in rows)
+            # Forget expansions for rows this range no longer has.
+            self.expanded_tags &= {t["key"] for t in self._data_tags}
+        else:
+            self._data_apps = self.storage.totals_by_app(start, end, ignore)
+            self._data_tags = []
+            self._grand = sum(a["seconds"] for a in self._data_apps)
+            self.expanded &= {a["app"] for a in self._data_apps}
+            self._load_files()
         self._data_trend = self.storage.totals_by_day(start, end) if self.range.is_multiday else {}
 
         # segment button styling
         for mode, b in self.seg_buttons.items():
             b.configure(style="Active.Seg.TButton" if mode == self.range.mode else "Seg.TButton")
+        for mode, b in self.mode_buttons.items():
+            b.configure(style="Active.Seg.TButton" if mode == self.chart_mode else "Seg.TButton")
         self.range_label.configure(text=self.range.label())
         self.total_label.configure(text=fmt_duration(self._grand))
+        self.chart_title.configure(
+            text="TAGS" if self.chart_mode == TAGS else "APPLICATIONS")
 
-        # Forget expansions for apps that no longer appear in this range.
-        present = {a["app"] for a in self._data_apps}
-        self.expanded &= present
-        self._load_files()
         self._update_note()
         self._draw_chart()
 
@@ -731,14 +856,14 @@ class Dashboard:
                 self._remember_trend_height()
                 self.main_paned.forget(self.trend_frame)
 
-        self._update_timeline(cfg, merge_map, ignore)
+        self._update_timeline(ignore)
         self._update_status()
 
     def _timeline_enabled(self) -> bool:
         cfg = self.tracker.cfg if self.tracker else None
         return cfg.timeline_enabled if cfg else True
 
-    def _update_timeline(self, cfg, merge_map, ignore) -> None:
+    def _update_timeline(self, ignore) -> None:
         """Show the timeline under a single day, when it's switched on."""
         wanted = self.range.mode == "day" and self._timeline_enabled()
         shown = self.timeline.winfo_manager() == "pack"
@@ -750,7 +875,7 @@ class Dashboard:
         if not shown:
             self.timeline.pack(side="bottom", fill="x", padx=16, pady=(0, 14),
                                before=self.main_paned)
-        self.timeline.load(self.range.anchor, merge_map, ignore)
+        self.timeline.load(self.range.anchor, ignore)
 
     def new_note(self) -> None:
         """Add a note at the current time, e.g. from the global hotkey.
@@ -769,8 +894,7 @@ class Dashboard:
         start, end = self.range.bounds()
         self._data_files = {}
         for key in self.expanded:
-            members = self._members_of(key)
-            self._data_files[key] = self.storage.totals_by_file(start, end, members)
+            self._data_files[key] = self.storage.totals_by_file(start, end, key)
 
     def _has_files(self, app: dict) -> bool:
         """Whether this app is worth expanding.
@@ -783,9 +907,7 @@ class Dashboard:
         cfg = self.tracker.cfg if self.tracker else None
         if cfg is None:
             return False
-        members = [m for m in self._members_of(app["app"])
-                   if not m.startswith(config.MERGE_PREFIX)]
-        return any(cfg.tracks_files(m) for m in members)
+        return cfg.tracks_files(app["app"])
 
     _NOTE_FILES = ("ⓘ Files are matched by name — same-named files may share a row "
                    "unless the app shows their folder.")
@@ -795,19 +917,14 @@ class Dashboard:
     def _update_note(self) -> None:
         """Explain the naming caveat, but only while a row is expanded."""
         cfg = self.tracker.cfg if self.tracker else None
-        if not (cfg and self.expanded):
+        if not (cfg and self.chart_mode == APPS and self.expanded):
             self.chart_note.grid_remove()
             return
-        site_only = True
-        for key in self.expanded:
-            members = [m for m in self._members_of(key)
-                       if not m.startswith(config.MERGE_PREFIX)]
-            if not (members and all(cfg.merged_rules.get(m) == ["site"] for m in members)):
-                site_only = False
-                break
+        site_only = all(cfg.merged_rules.get(key) == ["site"]
+                        for key in self.expanded)
         self.chart_note.configure(
             text=self._NOTE_SITES if site_only else self._NOTE_FILES)
-        self.chart_note.grid(row=1, column=0, sticky="w", pady=(0, 4))
+        self.chart_note.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 4))
 
     # -- canvas drawing ---------------------------------------------------
 
@@ -821,16 +938,21 @@ class Dashboard:
         return color_for(key)
 
     def _chart_rows(self) -> list[dict]:
-        """Flatten apps (and the files of expanded ones) into drawable rows."""
+        """Flatten the current list — and whatever is expanded — into rows."""
+        return self._tag_rows() if self.chart_mode == TAGS else self._app_rows()
+
+    def _app_rows(self) -> list[dict]:
+        """One row per app, with the files of expanded ones under them."""
         rows: list[dict] = []
         for app in self._data_apps:
             key = app["app"]
             rows.append({
                 "kind": "app", "key": key, "label": app["app_name"],
+                "app": key, "file": None,
                 "seconds": app["seconds"],
                 "pct": (app["seconds"] / self._grand * 100) if self._grand else 0,
                 "color": self._color_for(key),
-                "has_files": self._has_files(app),
+                "expandable": self._has_files(app),
                 "expanded": key in self.expanded,
             })
             if key not in self.expanded:
@@ -839,14 +961,49 @@ class Dashboard:
             total = app["seconds"] or 1
             for f in files:
                 rows.append({
-                    "kind": "file", "app": key, "key": f"{key}\x00{f['file']}",
+                    "kind": "file", "app": key, "file": f["file"],
+                    "key": f"{key}\x00{f['file']}",
                     "label": f["file"] or "(no file)",
                     "seconds": f["seconds"],
                     "pct": f["seconds"] / total * 100,
                     # Dimmed shade of the parent's colour keeps the grouping
                     # obvious without adding a second palette.
                     "color": _blend(self._color_for(key), PANEL, 0.45),
-                    "has_files": False, "expanded": False,
+                    "expandable": False, "expanded": False,
+                })
+        return rows
+
+    def _tag_rows(self) -> list[dict]:
+        """One row per tag (then "Untagged"), expanding to what's inside it.
+
+        Percentages are of the grand total, not of each other: an item can be
+        in several tags, so these deliberately add up to more than 100%.
+        """
+        rows: list[dict] = []
+        for tag in self._data_tags:
+            key = tag["key"]
+            rows.append({
+                "kind": "tag", "key": key, "label": tag["name"],
+                "tag": tag["tag"], "app": None, "file": None,
+                "seconds": tag["seconds"],
+                "pct": (tag["seconds"] / self._grand * 100) if self._grand else 0,
+                "color": LEFTOVER if tag["tag"] is None else self._color_for(key),
+                "expandable": bool(tag["items"]),
+                "expanded": key in self.expanded_tags,
+            })
+            if key not in self.expanded_tags:
+                continue
+            total = tag["seconds"] or 1
+            for item in tag["items"]:
+                rows.append({
+                    "kind": "item", "key": item["key"], "label": item["label"],
+                    "tag": tag["tag"], "app": item["app"], "file": item["file"],
+                    "seconds": item["seconds"],
+                    "pct": item["seconds"] / total * 100,
+                    "color": _blend(
+                        LEFTOVER if tag["tag"] is None else self._color_for(key),
+                        PANEL, 0.45),
+                    "expandable": False, "expanded": False,
                 })
         return rows
 
@@ -860,7 +1017,7 @@ class Dashboard:
             return
         rows = self._chart_rows()
         if not rows:
-            c.create_text(w // 2, h // 2, text="No activity in this range",
+            c.create_text(w // 2, h // 2, text=self._empty_text(),
                           fill=MUTED, font=("Segoe UI", 10))
             c.configure(scrollregion=(0, 0, w, h))
             return
@@ -871,13 +1028,14 @@ class Dashboard:
         bar_x0 = pad + name_w + gap
         bar_right = w - pad - pct_w - time_w
         bar_max = max(16, bar_right - bar_x0 - gap)
-        maxv = max((r["seconds"] for r in rows if r["kind"] == "app"), default=0) or 1
+        maxv = max((r["seconds"] for r in rows
+                    if r["kind"] in ("app", "tag")), default=0) or 1
 
         font = ("Segoe UI", 9)
         min_row, vpad = 26, 10
         y = pad
         for row in rows:
-            is_file = row["kind"] == "file"
+            is_file = row["kind"] in ("file", "item")
             # The expander gets its own column so every name starts at the same
             # x, whether or not the row can be expanded.
             indent = FILE_INDENT if is_file else 0
@@ -898,7 +1056,7 @@ class Dashboard:
             c.move(text_id, 0, (row_h - (y1 - y0)) / 2)   # centre in the row
 
             mid = y + row_h / 2
-            if row["has_files"]:
+            if row["expandable"]:
                 c.create_text(pad + 3, mid, text="▾" if row["expanded"] else "▸",
                               fill=MUTED, anchor="w", font=font)
             bw = max(2, bar_max * (row["seconds"] / maxv))
@@ -915,6 +1073,13 @@ class Dashboard:
             y += row_h
 
         c.configure(scrollregion=(0, 0, w, max(y + pad, h)))
+
+    def _empty_text(self) -> str:
+        """Why the list is empty — no data, or nothing tagged yet."""
+        cfg = self.tracker.cfg if self.tracker else None
+        if self.chart_mode == TAGS and cfg is not None and not cfg.tags:
+            return "No tags yet — right-click an app or file to add one"
+        return "No activity in this range"
 
     _MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]

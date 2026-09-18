@@ -35,14 +35,14 @@ Credit per tick is capped so sleep/wake gaps can't dump a huge chunk onto one ap
 | `devices.py` | Game-pad (XInput) and MIDI activity — input Windows doesn't count as input |
 | `winapi.py` | Windows ctypes backend (used by `sysinfo` on win32 only) |
 | `autostart.py` | Launch-at-login: Windows registry / macOS LaunchAgent / Linux .desktop |
-| `storage.py` | SQLite; buffered writes; read-time aggregation (app/file/day, merges, ignore) |
+| `storage.py` | SQLite; buffered writes; read-time aggregation (app/file/day, tags, ignore) |
 | `config.py` | Paths, defaults, friendly names, file-parsing rules, merge/track helpers |
-| `dashboard.py` | tkinter dashboard: ranges, app list, chart, trend; theme constants live here |
+| `dashboard.py` | tkinter dashboard: ranges, app/tag list, chart, trend; theme constants live here |
 | `timeline.py` | Day view timeline strip (focus blocks, idle/off, notes) and the note editor |
 | `hotkeys.py` | "New note" hotkey: text form (`Ctrl+Alt+N`), key capture, registration via `sysinfo` |
 | `settings.py` | Tabbed Settings window (General, Ignored apps, Backup, Timeline, About) |
 | `ignoreapps.py` | Ignored-apps manager window |
-| `merges.py` | "App groups" window (merge several exes into one) |
+| `tags.py` | Tags window (what each tag holds) + the shared tag-name prompt |
 | `appicon.py` | Clock icon shared by tray, window, and the built .exe |
 | `backups.py` | Daily rotating backups (location, rotation, scheduling) |
 | `restore.py` | "Restore from backup" window (merge / replace, with undo) |
@@ -51,7 +51,7 @@ Credit per tick is capped so sleep/wake gaps can't dump a huge chunk onto one ap
 | `buildwin.py` | Build-time: Windows app via Nuitka (folder + zip, version resource from `APP_VERSION`) |
 
 `dashboard.py` holds the color constants (`BG`, `PANEL`, `FG`, `MUTED`, `ACCENT`);
-`settings.py`, `merges.py`, and `ignoreapps.py` import them as `theme`.
+`settings.py`, `tags.py`, and `ignoreapps.py` import them as `theme`.
 
 ## Data & config
 
@@ -63,7 +63,7 @@ Stored per-user (not in the repo):
 
 **SQLite schema** — one table `activity(day, app, app_name, file, seconds)` keyed
 by `(day, app, file)`; `file=''` means app-level. Raw per-exe rows are always
-stored; **merges and ignores are applied at read time** in `storage.py`
+stored; **tags and ignores are applied at read time** in `storage.py`
 (non-destructive, retroactive, reversible).
 
 **Timeline** — table `timeline(day, start, end, state, app, app_name)`, epoch
@@ -71,7 +71,7 @@ seconds, one row per uninterrupted block (`state` = `active` / `idle` /
 `untracked`; ignored apps are recorded as `untracked`). The tracker calls
 `Storage.add_span` each tick; contiguous ticks extend the open block, which is
 written on flush and then updated in place. Gaps between blocks are "no record".
-Blocks never cross midnight. Merges/ignores are applied at read time in
+Blocks never cross midnight. The ignore list is applied at read time in
 `timeline.build_blocks`.
 
 **Notes** — table `notes(ts, text)`, `ts` = local `"YYYY-MM-DD HH:MM:SS"`. Both
@@ -85,8 +85,13 @@ rules in `DEFAULT_FILE_RULES` (+ user overrides in `config.json` `file_rules`):
 - `["app"]` = app-level only, `["auto"]` = force generic detection, absent = built-in/generic, or a custom regex list with a `(?P<file>…)` group.
 - Users toggle this by right-clicking an app in the dashboard ("Track files").
 
-**Merges** — `config.merges` = list of `{name, members[]}`; group key is
-`merge::<name>`.
+**Tags** — `config.tags` = list of `{name, items[]}`, where an item is
+`{"app": exe}` (the whole app) or `{"app": exe, "file": name}` (one file/site
+inside it; `file=""` is the app's untitled time). The chart key is
+`tag::<name>`, leftovers land under `config.UNTAGGED_KEY`, and the folding
+happens in `storage.fold_tags` — an item may sit in several tags, so tag
+totals overlap by design, but a row is only counted once within one tag.
+`config.load()` carries a <= 1.6 `merges` list over into tags.
 
 ## Conventions
 
