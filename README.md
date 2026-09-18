@@ -65,6 +65,8 @@ spread across several apps, files and websites.
   under a browser) → **Tags**, then tick an existing tag or pick **New tag…**.
 * **Anything can carry several tags**, and its time counts toward each of them.
   So tag totals overlap on purpose and add up to more than your day.
+* **A small `#2` before a bar** says how many tags that row carries — hover it
+  to see which ones.
 * **Switch the list to Tags** to see the total per tag; expand a tag to see
   what's in it. Only tags with time in the period you're looking at are
   listed, and untagged time isn't shown here — switch back to **Apps** for

@@ -16,6 +16,8 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
   what's in it. Only tags you actually spent time on in that range are listed,
   and untagged time isn't shown here — the Apps view is where everything is
   accounted for.
+- **A tag count on each row.** Anything that carries tags shows a small `#2`
+  just before its bar, in both views; hover it for the names.
 - **A Tags window** (the `#` button, or **Tags…** in the tray menu): tags on the
   left, everything filed under the selected one on the right, with **✕** to take
   an item out. New, rename and delete are under the list.

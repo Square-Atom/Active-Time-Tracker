@@ -34,6 +34,7 @@ APPS = "apps"           # chart modes: one row per application …
 TAGS = "tags"           # … or one row per tag, however its items are spread
 MARKER_W = 16    # expander column, so names line up whether or not one is shown
 FILE_INDENT = 18
+TAG_COUNT_W = 26  # column for the "#2" tag count, claimed only when in use
 
 # Offered when picking a bar colour by hand — a wider spread than BAR_COLORS so
 # there's a sensible blue/red/orange for apps with a known brand colour.
@@ -100,6 +101,45 @@ class Tooltip:
         self._cancel()
         if self._tip:
             self._tip.destroy()
+            self._tip = None
+
+
+class HoverTip:
+    """Tooltip for a spot on a canvas, where `Tooltip` (per-widget) can't help.
+
+    Keyed by whatever it's describing, so moving the pointer around inside the
+    same target leaves the popup where it is instead of flickering.
+    """
+
+    def __init__(self, parent):
+        self.parent = parent
+        self.key = None
+        self.text = ""
+        self._tip = None
+
+    def show(self, key, text: str, x: int, y: int) -> None:
+        if key == self.key:
+            return
+        self.hide()
+        self.key, self.text = key, text
+        try:
+            self._tip = tk.Toplevel(self.parent)
+            self._tip.wm_overrideredirect(True)
+            tk.Label(self._tip, text=text, bg="#f6f6fa", fg="#1e1f2b",
+                     font=("Segoe UI", 8), padx=6, pady=3,
+                     justify="left").pack()
+            self._tip.update_idletasks()
+            self._tip.wm_geometry(f"+{x + 12}+{y + 16}")
+        except tk.TclError:
+            self._tip = None
+
+    def hide(self, _event=None) -> None:
+        self.key, self.text = None, ""
+        if self._tip:
+            try:
+                self._tip.destroy()
+            except tk.TclError:
+                pass
             self._tip = None
 
 
@@ -388,7 +428,7 @@ class Dashboard:
         self.chart.bind("<Button-1>", self._on_chart_click)
         self.chart.bind("<Button-3>", self._on_chart_right_click)
         self.chart.bind("<Motion>", self._on_chart_motion)
-        self.chart.bind("<Leave>", lambda e: self._set_hover(None))
+        self.chart.bind("<Leave>", self._leave_chart)
         # Mouse wheel: Windows/macOS send <MouseWheel>, X11 sends Button-4/5.
         self.chart.bind("<MouseWheel>",
                         lambda e: self._scroll_chart(-1 if e.delta > 0 else 1))
@@ -419,6 +459,7 @@ class Dashboard:
         self._grand = 0.0
         self._rows: list[dict] = []                    # drawn rows, for hit tests
         self._hover: str | None = None
+        self._tag_tip = HoverTip(self.root)             # names behind a "#2"
 
     # -- events -----------------------------------------------------------
 
@@ -556,6 +597,7 @@ class Dashboard:
         row = self._row_at(event)
         if not row or not row["expandable"]:
             return None                     # nothing to expand
+        self._tag_tip.hide()
         expanded = self.expanded_tags if row["kind"] == "tag" else self.expanded
         key = row["key"]
         if key in expanded:
@@ -572,6 +614,20 @@ class Dashboard:
         row = self._row_at(event)
         self._set_hover(row["key"] if row else None,
                         clickable=bool(row and row["expandable"]))
+        self._update_tag_tip(row, event)
+
+    def _update_tag_tip(self, row, event) -> None:
+        """Show a row's tag names while the pointer is on its count."""
+        hit = row.get("tag_hit") if row else None
+        if hit and hit[0] <= self.chart.canvasx(event.x) <= hit[1]:
+            self._tag_tip.show(row["key"], "\n".join(row["tags"]),
+                               event.x_root, event.y_root)
+        else:
+            self._tag_tip.hide()
+
+    def _leave_chart(self, _event=None) -> None:
+        self._set_hover(None)
+        self._tag_tip.hide()
 
     def _set_hover(self, key, clickable: bool = False) -> None:
         if key != self._hover:
@@ -582,6 +638,7 @@ class Dashboard:
             self.chart.configure(cursor=cursor)
 
     def _scroll_chart(self, direction: int) -> None:
+        self._tag_tip.hide()      # it was pinned to a row that just moved
         self.chart.yview_scroll(direction * 2, "units")
 
     def _on_chart_scrolled(self, first: str, last: str) -> None:
@@ -935,6 +992,11 @@ class Dashboard:
         """Flatten the current list — and whatever is expanded — into rows."""
         return self._tag_rows() if self.chart_mode == TAGS else self._app_rows()
 
+    def _tags_of(self, app: str, file: str | None) -> list[str]:
+        """The tags filed against one row, for its count + hover list."""
+        cfg = self.tracker.cfg if self.tracker else None
+        return cfg.tags_for(app, file) if cfg else []
+
     def _app_rows(self) -> list[dict]:
         """One row per app, with the files of expanded ones under them."""
         rows: list[dict] = []
@@ -942,7 +1004,7 @@ class Dashboard:
             key = app["app"]
             rows.append({
                 "kind": "app", "key": key, "label": app["app_name"],
-                "app": key, "file": None,
+                "app": key, "file": None, "tags": self._tags_of(key, None),
                 "seconds": app["seconds"],
                 "pct": (app["seconds"] / self._grand * 100) if self._grand else 0,
                 "color": self._color_for(key),
@@ -957,6 +1019,7 @@ class Dashboard:
                 rows.append({
                     "kind": "file", "app": key, "file": f["file"],
                     "key": f"{key}\x00{f['file']}",
+                    "tags": self._tags_of(key, f["file"]),
                     "label": f["file"] or "(no file)",
                     "seconds": f["seconds"],
                     "pct": f["seconds"] / total * 100,
@@ -979,7 +1042,7 @@ class Dashboard:
             key = tag["key"]
             rows.append({
                 "kind": "tag", "key": key, "label": tag["name"],
-                "tag": tag["tag"], "app": None, "file": None,
+                "tag": tag["tag"], "app": None, "file": None, "tags": [],
                 "seconds": tag["seconds"],
                 "pct": (tag["seconds"] / self._grand * 100) if self._grand else 0,
                 "color": self._color_for(key),
@@ -993,6 +1056,7 @@ class Dashboard:
                 rows.append({
                     "kind": "item", "key": item["key"], "label": item["label"],
                     "tag": tag["tag"], "app": item["app"], "file": item["file"],
+                    "tags": self._tags_of(item["app"], item["file"]),
                     "seconds": item["seconds"],
                     "pct": item["seconds"] / total * 100,
                     "color": _blend(self._color_for(key), PANEL, 0.45),
@@ -1018,7 +1082,10 @@ class Dashboard:
         pad = 12
         pct_w, time_w, gap = 46, 74, 12
         name_w = max(130, (w - 2 * pad - pct_w - time_w - gap) * 0.42)
-        bar_x0 = pad + name_w + gap
+        # The tag-count column only costs width when something is tagged.
+        count_w = TAG_COUNT_W if any(r["tags"] for r in rows) else 0
+        count_x = pad + name_w + count_w
+        bar_x0 = count_x + gap
         bar_right = w - pad - pct_w - time_w
         bar_max = max(16, bar_right - bar_x0 - gap)
         maxv = max((r["seconds"] for r in rows
@@ -1052,6 +1119,14 @@ class Dashboard:
             if row["expandable"]:
                 c.create_text(pad + 3, mid, text="▾" if row["expanded"] else "▸",
                               fill=MUTED, anchor="w", font=font)
+            row["tag_hit"] = None
+            if row["tags"]:
+                # A count rather than the names: the names are as long as the
+                # tags people invent, and they're one hover away.
+                count = c.create_text(count_x, mid, text=f"#{len(row['tags'])}",
+                                      fill=MUTED, anchor="e", font=("Segoe UI", 8))
+                x0, _y0, x1, _y1 = c.bbox(count)
+                row["tag_hit"] = (x0 - 4, x1 + 4)
             bw = max(2, bar_max * (row["seconds"] / maxv))
             bar_h = min(13, row_h * 0.46)
             c.create_rectangle(bar_x0, mid - bar_h / 2, bar_x0 + bw, mid + bar_h / 2,
@@ -1196,6 +1271,7 @@ class Dashboard:
 
     def hide(self) -> None:
         self._visible = False
+        self._tag_tip.hide()
         if self._refresh_job:
             self.root.after_cancel(self._refresh_job)
             self._refresh_job = None

@@ -538,6 +538,70 @@ def test_a_tagged_item_can_be_taken_out_from_the_chart(dash, tk_root, store,
     assert cfg.tags_for("code.exe", "main.py") == []
 
 
+def _motion(dash, row, x):
+    """Move the pointer to (x, this row) on the chart."""
+    dash._on_chart_motion(types.SimpleNamespace(
+        x=x, y=row["y0"] + 2, x_root=500, y_root=400))
+
+
+def test_a_row_counts_the_tags_it_carries(dash, tk_root, store, cfg, today):
+    store.add_seconds(today, "chrome.exe", "Chrome", "GitHub", 50)
+    cfg.set_item_tag("Work", "chrome.exe", "GitHub", True)
+    cfg.set_item_tag("Code", "chrome.exe", "GitHub", True)
+    dash.refresh(); _drawn(dash, tk_root)
+
+    # the browser itself isn't tagged, only the site under it
+    assert [r["tags"] for r in dash._rows] == [[]]
+    assert "#2" not in _texts(dash.chart)
+
+    _click(dash, "chrome.exe"); _drawn(dash, tk_root)
+    site = next(r for r in dash._rows if r["kind"] == "file")
+    assert site["tags"] == ["Work", "Code"]
+    assert "#2" in _texts(dash.chart)
+    assert site["tag_hit"], "the count is there to be hovered"
+
+
+def test_the_count_sits_between_the_name_and_the_bar(dash, tk_root, store, cfg,
+                                                     today):
+    store.add_seconds(today, "game.exe", "Game", "", 100)
+    cfg.set_item_tag("Play", "game.exe", None, True)
+    dash.refresh(); _drawn(dash, tk_root, w=560)
+
+    row = dash._rows[0]
+    bar = min(dash.chart.coords(i)[0] for i in dash.chart.find_all()
+              if dash.chart.type(i) == "rectangle")
+    name_w = max(130, (560 - 24 - 46 - 74 - 12) * 0.42)
+    assert name_w <= row["tag_hit"][0] and row["tag_hit"][1] <= bar
+
+
+def test_hovering_the_count_lists_the_tags(dash, tk_root, store, cfg, today):
+    store.add_seconds(today, "game.exe", "Game", "", 100)
+    cfg.set_item_tag("Play", "game.exe", None, True)
+    cfg.set_item_tag("Evenings", "game.exe", None, True)
+    dash.refresh(); _drawn(dash, tk_root)
+    row = dash._rows[0]
+
+    _motion(dash, row, sum(row["tag_hit"]) / 2)
+    assert dash._tag_tip.text == "Play\nEvenings"
+
+    _motion(dash, row, row["tag_hit"][1] + 40)      # off the count, onto the bar
+    assert dash._tag_tip.key is None
+
+
+def test_the_count_column_costs_nothing_when_nothing_is_tagged(
+        dash, tk_root, store, cfg, today):
+    store.add_seconds(today, "game.exe", "Game", "", 100)
+    dash.refresh(); _drawn(dash, tk_root, w=560)
+    untagged_bar = min(dash.chart.coords(i)[0] for i in dash.chart.find_all()
+                       if dash.chart.type(i) == "rectangle")
+
+    cfg.set_item_tag("Play", "game.exe", None, True)
+    dash.refresh(); _drawn(dash, tk_root, w=560)
+    tagged_bar = min(dash.chart.coords(i)[0] for i in dash.chart.find_all()
+                     if dash.chart.type(i) == "rectangle")
+    assert tagged_bar > untagged_bar
+
+
 def test_renaming_a_tag_carries_its_colour(dash, cfg, monkeypatch):
     import tags as tags_mod
     cfg.create_tag("Work")
