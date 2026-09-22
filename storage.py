@@ -316,6 +316,64 @@ class Storage:
         self.flush()
         self._conn.close()
 
+    def move_time(self, start: str, end: str, app: str, src: str, dst: str,
+                  seconds: float) -> float:
+        """Re-file up to `seconds` of one app's `src` record as `dst`, within
+        [start, end]. Returns how much actually moved.
+
+        This is a one-off correction of what's already recorded — typically
+        "(no file)" time from before a document was first saved — so it
+        touches only the days in the range and sets up no rule for the
+        future. Time lands on the same day it came from, merging into `dst`
+        where that already has a row. The latest days are taken first.
+        """
+        if src == dst or seconds <= 0:
+            return 0.0
+        self.flush()
+        moved = 0.0
+        with self._lock, self._conn:
+            rows = self._conn.execute(
+                "SELECT day, app_name, seconds FROM activity"
+                " WHERE app = ? AND file = ? AND day BETWEEN ? AND ?"
+                " ORDER BY day DESC",
+                (app, src, start, end),
+            ).fetchall()
+            for day, app_name, have in rows:
+                take = min(have, seconds - moved)
+                if take <= 0:
+                    break
+                if have - take < 0.5:       # don't leave a sliver behind
+                    take = have
+                    self._conn.execute(
+                        "DELETE FROM activity WHERE day = ? AND app = ? AND file = ?",
+                        (day, app, src))
+                else:
+                    self._conn.execute(
+                        "UPDATE activity SET seconds = seconds - ?"
+                        " WHERE day = ? AND app = ? AND file = ?",
+                        (take, day, app, src))
+                self._conn.execute(
+                    """
+                    INSERT INTO activity (day, app, app_name, file, seconds)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(day, app, file) DO UPDATE SET
+                        seconds = seconds + excluded.seconds
+                    """,
+                    (day, app, app_name, dst, take),
+                )
+                moved += take
+        return moved
+
+    def known_files(self, app: str) -> list[str]:
+        """Every file name ever recorded for `app`, most recently used first."""
+        self.flush()
+        cur = self._conn.execute(
+            "SELECT file FROM activity WHERE app = ? AND file != ''"
+            " GROUP BY file ORDER BY MAX(day) DESC, SUM(seconds) DESC",
+            (app,),
+        )
+        return [r[0] for r in cur]
+
     def restore_from(self, path: str, mode: str = REPLACE) -> int:
         """Load activity from a backup file. Returns the resulting row count.
 

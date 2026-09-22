@@ -759,3 +759,87 @@ def test_hotkey_note_goes_on_todays_timeline(dash, store, today, monkeypatch):
                         lambda parent, day, *a, **k: (f"{day} 08:00:00", "hi"))
     dash.new_note()
     assert store.notes_for_day(today) == {f"{today} 08:00:00": "hi"}
+
+
+# --- editing records ---------------------------------------------------------
+
+def _file_row(dash, tk_root, file):
+    _click(dash, "ps.exe"); _drawn(dash, tk_root)
+    return next(r for r in dash._rows
+                if r["kind"] == "file" and r["file"] == file)
+
+
+def test_every_row_can_copy_its_name_but_only_files_can_be_edited(
+        dash, tk_root, store, cfg, today):
+    store.add_seconds(today, "ps.exe", "Photoshop", "", 60)
+    dash.refresh(); _drawn(dash, tk_root)
+    app_row = next(r for r in dash._rows if r["kind"] == "app")
+    menu = dash._menu()
+    dash._fill_record_menu(menu, app_row)
+    assert _labels(menu) == ["Copy record's name"]
+
+    file_row = _file_row(dash, tk_root, "")
+    menu = dash._menu()
+    dash._fill_record_menu(menu, file_row)
+    assert _labels(menu) == ["Copy record's name", "Edit record…"]
+
+
+def test_copied_name_fills_in_the_edit_and_the_time_moves(
+        dash, tk_root, store, today, monkeypatch):
+    """The unsaved document's "(no file)" time folds into the saved file."""
+    import recordedit
+    store.add_seconds(today, "ps.exe", "Photoshop", "", 600)
+    store.add_seconds(today, "ps.exe", "Photoshop", "logo.psd", 300)
+    dash.refresh(); _drawn(dash, tk_root)
+
+    dash._ctx_copy_name(_file_row(dash, tk_root, "logo.psd"))
+    assert dash._copied_name == "logo.psd"
+    assert tk_root.clipboard_get() == "logo.psd"
+
+    seen = {}
+
+    def fake_ask(parent, app_name, file, available, label, choices, initial):
+        seen.update(app_name=app_name, file=file, available=available,
+                    choices=choices, initial=initial)
+        return available, initial
+
+    monkeypatch.setattr(recordedit, "ask_edit", fake_ask)
+    dash._ctx_edit_record(next(r for r in dash._rows
+                               if r["kind"] == "file" and r["file"] == ""))
+    assert seen == {"app_name": "Photoshop", "file": "", "available": 600,
+                    "choices": ["logo.psd"], "initial": "logo.psd"}
+    _drawn(dash, tk_root)
+    files = {r["file"]: r["seconds"] for r in dash._rows if r["kind"] == "file"}
+    assert files == {"logo.psd": 900}
+
+
+def test_a_named_file_can_be_moved_back_to_no_file(
+        dash, tk_root, store, today, monkeypatch):
+    import recordedit
+    store.add_seconds(today, "ps.exe", "Photoshop", "logo.psd", 300)
+    dash.refresh(); _drawn(dash, tk_root)
+    row = _file_row(dash, tk_root, "logo.psd")
+    dash._ctx_copy_name(row)            # copied from this very row
+    seen = {}
+
+    def fake_ask(parent, app_name, file, available, label, choices, initial):
+        seen.update(choices=choices, initial=initial)
+        return 100, ""
+
+    monkeypatch.setattr(recordedit, "ask_edit", fake_ask)
+    dash._ctx_edit_record(row)
+    assert seen == {"choices": [recordedit.NO_FILE], "initial": ""}
+    assert {f["file"]: f["seconds"] for f in
+            store.totals_by_file(today, today, "ps.exe")} == {"logo.psd": 200,
+                                                               "": 100}
+
+
+def test_cancelling_the_edit_changes_nothing(dash, tk_root, store, today,
+                                             monkeypatch):
+    import recordedit
+    store.add_seconds(today, "ps.exe", "Photoshop", "", 60)
+    dash.refresh(); _drawn(dash, tk_root)
+    monkeypatch.setattr(recordedit, "ask_edit", lambda *a: None)
+    dash._ctx_edit_record(_file_row(dash, tk_root, ""))
+    assert store.totals_by_file(today, today, "ps.exe") == [
+        {"file": "", "seconds": 60}]

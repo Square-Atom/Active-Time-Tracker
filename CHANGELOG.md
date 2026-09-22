@@ -3,6 +3,17 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## [Unreleased]
+
+### Added
+- **Edit record.** Right-click a file row — including "(no file)" — and
+  **Edit record…** to move some or all of its time to another name in the same
+  app. Pick a name that already has time and the two are merged. It's meant for
+  the time spent on a document before it was first saved, which the window
+  title can't name: **Copy record's name** on the saved file (any row has it),
+  then edit "(no file)" and the name is already filled in. It changes only the
+  days on screen, once — past and future records are left as they are.
+
 ## [1.7.0] — 2026-09-18
 
 ### Added

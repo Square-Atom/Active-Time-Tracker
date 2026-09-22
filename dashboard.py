@@ -273,6 +273,7 @@ class Dashboard:
         self._refresh_job = None
         self._visible = False
         self._trend_height = 190  # default trend pane height (drag-adjustable)
+        self._copied_name: str | None = None   # from "Copy record's name"
         self._build()
 
     def _open_settings(self) -> None:
@@ -669,6 +670,7 @@ class Dashboard:
             self._fill_tag_menu(menu, row, event)
         else:
             self._fill_app_menu(menu, cfg, row, event)
+        self._fill_record_menu(menu, row)
         if menu.index("end") is None:
             return                          # nothing worth offering here
         try:
@@ -714,6 +716,16 @@ class Dashboard:
                          command=lambda: self._ctx_rename_tag(tag))
         menu.add_command(label=f'Delete tag "{tag}"',
                          command=lambda: self._ctx_delete_tag(tag))
+
+    def _fill_record_menu(self, menu, row) -> None:
+        """Copy any row's name; re-file a file row's time under another."""
+        if menu.index("end") is not None:
+            menu.add_separator()
+        menu.add_command(label="Copy record's name",
+                         command=lambda: self._ctx_copy_name(row))
+        if row.get("file") is not None:
+            menu.add_command(label="Edit record…",
+                             command=lambda: self._ctx_edit_record(row))
 
     def _tag_submenu(self, parent, app: str, file: str | None, label: str) -> tk.Menu:
         """A tick per tag for one item, plus a way to start a new one."""
@@ -776,6 +788,45 @@ class Dashboard:
         cfg.delete_tag(tag)
         cfg.app_colors.pop(config.tag_key(tag), None)
         cfg.save()
+        self.refresh()
+
+    # -- record actions ---------------------------------------------------
+
+    @staticmethod
+    def _record_name(row) -> str:
+        """The name a row stands for: its file, else its app or tag."""
+        from recordedit import NO_FILE
+        if row.get("file") is not None:
+            return row["file"] or NO_FILE
+        return row["label"]
+
+    def _ctx_copy_name(self, row) -> None:
+        """Remember the name for "Edit record", and put it on the clipboard."""
+        self._copied_name = self._record_name(row)
+        try:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(self._copied_name)
+        except tk.TclError:
+            pass                            # the in-app copy still works
+
+    def _ctx_edit_record(self, row) -> None:
+        """Move some of this record's time, in this range, to another name."""
+        import recordedit
+        app, file = row["app"], row["file"]
+        app_name = row.get("app_name") or config.friendly_name(app)
+        choices = [f for f in self.storage.known_files(app) if f != file]
+        if file:
+            choices.insert(0, recordedit.NO_FILE)
+        initial = self._copied_name or ""
+        if recordedit.file_from_label(initial) == file:
+            initial = ""                    # copied from this very row
+        result = recordedit.ask_edit(self.root, app_name, file, row["seconds"],
+                                     self.range.label(), choices, initial)
+        if result is None:
+            return
+        seconds, new_file = result
+        start, end = self.range.bounds()
+        self.storage.move_time(start, end, app, file, new_file, seconds)
         self.refresh()
 
     # -- bar colour -------------------------------------------------------
@@ -1022,6 +1073,7 @@ class Dashboard:
             for f in files:
                 rows.append({
                     "kind": "file", "app": key, "file": f["file"],
+                    "app_name": app["app_name"],
                     "key": f"{key}\x00{f['file']}",
                     "tags": self._tags_of(key, f["file"]),
                     "label": f["file"] or "(no file)",
@@ -1060,6 +1112,7 @@ class Dashboard:
                 rows.append({
                     "kind": "item", "key": item["key"], "label": item["label"],
                     "tag": tag["tag"], "app": item["app"], "file": item["file"],
+                    "app_name": item["app_name"],
                     "tags": self._tags_of(item["app"], item["file"]),
                     "seconds": item["seconds"],
                     "pct": item["seconds"] / total * 100,

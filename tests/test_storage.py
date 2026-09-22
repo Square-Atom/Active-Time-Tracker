@@ -270,3 +270,72 @@ def test_backup_is_a_standalone_file(store, tmp_path, today):
     assert dest.exists() and dest.stat().st_size > 0
     # no sidecars needed to read it
     assert not (tmp_path / "copy.db-wal").exists()
+
+
+# --- moving time between records ------------------------------------------
+
+def _files(store, start, end, app="ps.exe"):
+    return {f["file"]: f["seconds"]
+            for f in store.totals_by_file(start, end, app)}
+
+
+def test_moving_all_of_a_record_merges_it_into_the_other(store, today):
+    store.add_seconds(today, "ps.exe", "Photoshop", "", 600)
+    store.add_seconds(today, "ps.exe", "Photoshop", "logo.psd", 300)
+    moved = store.move_time(today, today, "ps.exe", "", "logo.psd", 600)
+    assert moved == 600
+    assert _files(store, today, today) == {"logo.psd": 900}
+
+
+def test_moving_part_of_a_record_leaves_the_rest(store, today):
+    store.add_seconds(today, "ps.exe", "Photoshop", "", 600)
+    store.move_time(today, today, "ps.exe", "", "logo.psd", 200)
+    assert _files(store, today, today) == {"": 400, "logo.psd": 200}
+
+
+def test_moving_to_a_new_name_creates_it(store, today):
+    store.add_seconds(today, "ps.exe", "Photoshop", "Untitled-1", 60)
+    store.move_time(today, today, "ps.exe", "Untitled-1", "logo.psd", 60)
+    assert _files(store, today, today) == {"logo.psd": 60}
+    assert store.totals_by_app(today, today)[0]["app_name"] == "Photoshop"
+
+
+def test_moving_stays_inside_the_range_and_on_its_own_days(store):
+    """A one-off correction: other days — past or future — keep their record,
+    and moved time stays on the day it was spent."""
+    for day in ("2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04"):
+        store.add_seconds(day, "ps.exe", "Photoshop", "", 100)
+    moved = store.move_time("2026-03-02", "2026-03-03", "ps.exe", "",
+                            "logo.psd", 150)
+    assert moved == 150
+    # Latest day first: all of the 3rd, then half of the 2nd.
+    assert _files(store, "2026-03-03", "2026-03-03") == {"logo.psd": 100}
+    assert _files(store, "2026-03-02", "2026-03-02") == {"": 50, "logo.psd": 50}
+    assert _files(store, "2026-03-01", "2026-03-01") == {"": 100}
+    assert _files(store, "2026-03-04", "2026-03-04") == {"": 100}
+
+
+def test_moving_includes_time_not_yet_flushed(store, today):
+    store.add_seconds(today, "ps.exe", "Photoshop", "", 30)   # still buffered
+    assert store.move_time(today, today, "ps.exe", "", "a.psd", 30) == 30
+    assert _files(store, today, today) == {"a.psd": 30}
+
+
+def test_moving_leaves_other_apps_alone(store, today):
+    store.add_seconds(today, "ps.exe", "Photoshop", "", 60)
+    store.add_seconds(today, "code.exe", "VS Code", "", 60)
+    store.move_time(today, today, "ps.exe", "", "a.psd", 60)
+    assert _files(store, today, today, "code.exe") == {"": 60}
+
+
+def test_moving_a_record_onto_itself_does_nothing(store, today):
+    store.add_seconds(today, "ps.exe", "Photoshop", "a.psd", 60)
+    assert store.move_time(today, today, "ps.exe", "a.psd", "a.psd", 60) == 0
+    assert _files(store, today, today) == {"a.psd": 60}
+
+
+def test_known_files_are_most_recent_first(store):
+    store.add_seconds("2026-03-01", "ps.exe", "Photoshop", "old.psd", 900)
+    store.add_seconds("2026-03-05", "ps.exe", "Photoshop", "new.psd", 10)
+    store.add_seconds("2026-03-05", "ps.exe", "Photoshop", "", 10)
+    assert store.known_files("ps.exe") == ["new.psd", "old.psd"]

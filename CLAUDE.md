@@ -44,6 +44,7 @@ Credit per tick is capped so sleep/wake gaps can't dump a huge chunk onto one ap
 | `settings.py` | Tabbed Settings window (General, Ignored apps, Backup, Timeline, Notifications, About) |
 | `ignoreapps.py` | Ignored-apps manager window |
 | `tags.py` | Tags window (what each tag holds) + the shared tag-name prompt |
+| `recordedit.py` | "Edit record" window: move a record's time to another name (duration parsing) |
 | `appicon.py` | Clock icon shared by tray, window, and the built .exe |
 | `backups.py` | Daily rotating backups (location, rotation, scheduling) |
 | `restore.py` | "Restore from backup" window (merge / replace, with undo) |
@@ -89,6 +90,13 @@ point — it opens the note window centred on screen (`ask_note(center=True)`).
 
 **Hotkey** — `RegisterHotKey` on its own message-loop thread (`winapi.GlobalHotkey`),
 not a keyboard hook. Windows only; elsewhere `sysinfo.register_hotkey` returns None.
+
+**Edit record** — right-click a file row → **Edit record…** re-files some of
+its time, in the range on screen, under another file name of the same app
+(`Storage.move_time`), merging into that name's rows day by day, latest days
+first. Unlike tags and ignores this *does* rewrite `activity` rows: it's a
+one-off correction, not a rule, so later time still lands where the tracker
+puts it. **Copy record's name** (every row) pre-fills the target.
 
 **File detection** — `config.parse_file` reads the window title using per-app
 rules in `DEFAULT_FILE_RULES` (+ user overrides in `config.json` `file_rules`):

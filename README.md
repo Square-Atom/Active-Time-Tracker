@@ -105,6 +105,13 @@ with the same names.
 * **Bar colour…** — pick a colour for that app, so Photoshop can be blue and
   Pyxel Edit red. Your choice is saved; **Reset** goes back to the automatic one.
 * **Add to ignore list** — stop tracking it and hide it from your stats.
+* **Copy record's name** — on any row. Copies the name, ready for **Edit record**.
+* **Edit record…** — on a file (or "(no file)") row. Moves some or all of its
+  time to another name in the same app; if that name already has time, the two
+  are merged. Handy for the time you spent on a document before you first
+  saved it, which is recorded as "(no file)": copy the saved file's name, then
+  edit "(no file)" and the name is already filled in. Only the days you're
+  looking at change — nothing is set up for the past or the future.
 
 ### Tray menu (right-click the clock icon)
 * **Open dashboard** · **Pause / resume tracking**
