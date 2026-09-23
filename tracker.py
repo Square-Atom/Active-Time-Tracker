@@ -83,6 +83,7 @@ class Tracker:
 
     def _run(self) -> None:
         last = time.monotonic()
+        last_wall = time.time()
         last_flush = last
         # Check soon after start, then hourly.
         last_backup_check = last - _BACKUP_CHECK_SECONDS
@@ -104,9 +105,13 @@ class Tracker:
             delta = now - last
             last = now
             # The timeline needs wall-clock times. The span ends now and covers
-            # the same capped credit, so a sleep/wake gap stays a gap.
+            # the same capped credit, so a sleep/wake gap stays a gap. The two
+            # clocks are read one after the other, so a thread preempted
+            # between the reads would start a span a little before the last
+            # one ended; clamp to it so blocks butt up rather than overlap.
             wall = time.time()
-            span_start = wall - min(delta, max_credit)
+            span_start = max(wall - min(delta, max_credit), last_wall)
+            last_wall = wall
 
             if now - last_flush >= flush_every:
                 self.storage.flush()
