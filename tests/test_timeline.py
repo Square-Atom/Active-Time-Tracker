@@ -303,12 +303,13 @@ def view(tk_root, store):
              "muted": "#888888", "accent": "#7c9cff", "hover": "#222222"}
     v = timeline.TimelineView(tk_root, store, theme, color_for=lambda k: "#ff0000")
     v.pack(fill="x")
-    tk_root.geometry("900x200")
-    tk_root.deiconify()
-    tk_root.update()
+    # Pin the width rather than showing the window: deiconify() + update()
+    # intermittently never returned on the macOS CI runner, which has no real
+    # screen session. The drawing only needs a width to lay out against.
+    v.canvas.winfo_width = lambda: 800
+    tk_root.update_idletasks()
     yield v
     v.close_popups()
-    tk_root.withdraw()
 
 
 def test_view_draws_blocks_and_notes(view, store, today):
@@ -317,7 +318,7 @@ def test_view_draws_blocks_and_notes(view, store, today):
     _ticks(store, IDLE, t0 + 60, 30)
     store.save_note(f"{today} 09:00:30", "hello")
     view.load(dt.date.today())
-    view.update()
+    view.update_idletasks()
     fills = {view.canvas.itemcget(i, "fill") for i in view.canvas.find_all()}
     assert "#ff0000" in fills and timeline.IDLE_COLOR in fills
     assert timeline.NOTE_PAPER in fills
@@ -328,7 +329,7 @@ def test_clicking_a_note_offers_edit_and_delete(view, store, today, monkeypatch)
     _ticks(store, ACTIVE, _at(today, "09:00:00"), 60, "a.exe", "A")
     ts = store.save_note(f"{today} 09:00:30", "hello")
     view.load(dt.date.today())
-    view.update()
+    view.update_idletasks()
     x = view._note_hits[0][0]
     view._on_click(types.SimpleNamespace(x=x, y=10))
     assert set(view._actions.buttons) == {"edit", "delete"}
@@ -350,7 +351,7 @@ def test_editing_a_note_saves_the_new_text(view, store, today, monkeypatch):
 
 def test_an_empty_day_says_so(view):
     view.load(dt.date(2001, 1, 1))
-    view.update()
+    view.update_idletasks()
     texts = [view.canvas.itemcget(i, "text") for i in view.canvas.find_all()
              if view.canvas.type(i) == "text"]
     assert any("No timeline" in t for t in texts)
