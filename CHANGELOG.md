@@ -5,6 +5,8 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-10-05
+
 ### Added
 - **Tag groups.** The Tags window has a **New group** button, and every tag
   now has a grip before its name: drag it onto a group to file the tag there,
@@ -307,6 +309,7 @@ First release.
   Windows/macOS/Linux release builds through GitHub Actions.
 - Local SQLite storage — data never leaves the machine.
 
+[1.9.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.9.0
 [1.8.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.8.0
 [1.7.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.7.0
 [1.6.0]: https://github.com/Square-Atom/Active-Time-Tracker/releases/tag/v1.6.0
