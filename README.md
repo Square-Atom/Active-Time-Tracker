@@ -98,10 +98,22 @@ spread across several apps, files and websites.
 *Upgrading from 1.6 or earlier?* Your old **app groups** come across as tags
 with the same names.
 
+### Folders in your file manager
+Time in a file manager is split by the folder you're looking at, the way an
+editor's time is split by file. Turn it off with a right-click on the app →
+**Track folders for this app**.
+
+| Platform | File manager | What gets recorded |
+|----------|--------------|--------------------|
+| Windows | File Explorer | The full path (`D:\Projects\Art`), including the right tab on Windows 11. Virtual places show their name (This PC, Home). |
+| macOS | Finder | The full path. macOS asks once to let Active Time Tracker control Finder; until you allow it, only the app is recorded. |
+| Linux (X11) | Files (Nautilus), Dolphin, Thunar, Nemo, Caja, PCManFM | The folder's name from the title bar. Turn on your file manager's "show full path in title bar" option (Dolphin and Nemo have one) to get full paths. |
+
 ### Right-click an app
 * **Tags** — file this row under a tag (see above).
 * **Track files for this app** — turn per-file tracking on or off for that app.
-  (Works when the app shows the file name in its title bar.)
+  (Works when the app shows the file name in its title bar.) For a file
+  manager this reads **Track folders for this app**.
 * **Bar colour…** — pick a colour for that app, so Photoshop can be blue and
   Pyxel Edit red. Your choice is saved; **Reset** goes back to the automatic one.
 * **Add to ignore list** — stop tracking it and hide it from your stats.

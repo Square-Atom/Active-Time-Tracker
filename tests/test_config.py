@@ -27,7 +27,6 @@ def parse(exe, title):
     ("winword.exe", "Report Q3 - Word", "Report Q3"),
     ("unknownapp.exe", "render.exr - MyTool", "render.exr"),   # generic fallback
     ("unknownapp.exe", "Untitled document", ""),               # no file at all
-    ("explorer.exe", "Documents", ""),                         # app-level only
 ])
 def test_parse_file(exe, title, expected):
     assert parse(exe, title) == expected
@@ -116,12 +115,42 @@ def test_long_site_is_truncated():
     assert 0 < len(site) <= 40
 
 
+# --- folders (file managers) ----------------------------------------------
+
+@pytest.mark.parametrize("exe,title,expected", [
+    ("explorer.exe", "Documents", "Documents"),                     # Windows 10
+    ("explorer.exe", "Documents - File Explorer", "Documents"),     # Windows 11
+    ("explorer.exe", "Downloads and 2 more tabs - File Explorer", "Downloads"),
+    ("explorer.exe", "Downloads and 1 more tab - File Explorer", "Downloads"),
+    # "Display the full path in the title bar" is on
+    ("explorer.exe", r"C:\Users\hau\Art - Old - File Explorer", r"C:\Users\hau\Art - Old"),
+    ("explorer.exe", "This PC - File Explorer", "This PC"),
+    ("explorer.exe", "Program Manager", ""),                       # the desktop
+    ("explorer.exe", "", ""),                                      # the taskbar
+    ("finder", "Downloads", "Downloads"),
+    ("nautilus", "Pictures", "Pictures"),
+    ("dolphin", "Music — Dolphin", "Music"),
+    ("dolphin", "/home/hau/Music - Old — Dolphin", "/home/hau/Music - Old"),
+    ("thunar", "Documents - File Manager", "Documents"),
+    ("thunar", "Documents - Thunar", "Documents"),
+    ("nemo", "Projects - Old", "Projects - Old"),       # no branding to strip
+])
+def test_parse_folder(exe, title, expected):
+    assert parse(exe, title) == expected
+
+
+def test_only_the_file_managers_own_branding_is_stripped():
+    # A folder that happens to end in another app's name keeps it.
+    assert parse("nautilus", "Notes - Dolphin") == "Notes - Dolphin"
+    assert parse("explorer.exe", "Notes - Files") == "Notes - Files"
+
+
 # --- per-app tracking toggle ----------------------------------------------
 
 def test_track_files_toggle_round_trip(cfg):
     assert cfg.tracks_files("photoshop.exe") is True
     assert cfg.tracks_files("chrome.exe") is True      # browsers -> site
-    assert cfg.tracks_files("explorer.exe") is False   # app-level default
+    assert cfg.tracks_files("explorer.exe") is True    # file managers -> folder
 
     cfg.set_track_files("chrome.exe", False)
     assert cfg.file_rules["chrome.exe"] == ["app"]
@@ -135,8 +164,27 @@ def test_track_files_toggle_round_trip(cfg):
 
 
 def test_enabling_an_app_level_app_forces_generic_detection(cfg):
+    cfg.set_track_files("cmd.exe", False)
+    cfg.set_track_files("cmd.exe", True)
+    assert "cmd.exe" not in cfg.file_rules             # no built-in rule: generic
+    config.DEFAULT_FILE_RULES["fake.exe"] = ["app"]
+    try:
+        cfg.set_track_files("fake.exe", True)
+        assert cfg.file_rules["fake.exe"] == ["auto"]
+    finally:
+        del config.DEFAULT_FILE_RULES["fake.exe"]
+
+
+def test_folder_tracking_toggles_off_and_back_on(cfg):
+    cfg.set_track_files("explorer.exe", False)
+    assert parse_with(cfg, "explorer.exe", "Documents - File Explorer") == ""
     cfg.set_track_files("explorer.exe", True)
-    assert cfg.file_rules["explorer.exe"] == ["auto"]
+    assert "explorer.exe" not in cfg.file_rules        # back to folder tracking
+    assert parse_with(cfg, "explorer.exe", "Documents - File Explorer") == "Documents"
+
+
+def parse_with(cfg, exe, title):
+    return config.parse_file(exe, title, cfg.merged_rules)
 
 
 def test_friendly_names():

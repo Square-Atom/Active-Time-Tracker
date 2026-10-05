@@ -102,6 +102,14 @@ puts it. **Copy record's name** (every row) pre-fills the target.
 rules in `DEFAULT_FILE_RULES` (+ user overrides in `config.json` `file_rules`):
 - `["app"]` = app-level only, `["auto"]` = force generic detection, absent = built-in/generic, or a custom regex list with a `(?P<file>…)` group.
 - Users toggle this by right-clicking an app in the dashboard ("Track files").
+- `["site"]` = browsers, by website (`parse_site`). `["folder"]` = file managers
+  (`config.FILE_MANAGERS`), by folder: the tracker first asks
+  `sysinfo.file_manager_folder(win)` — Explorer via Shell.Application COM
+  (pywin32, optional; `winapi.explorer_folder`, picks the Windows 11 tab the
+  title names), Finder via `osascript` (needs Automation permission, backs off
+  60s after a failure), Linux returns None — and falls back to the title
+  (`parse_folder`) when it gets None. `''` means "not a folder window" (the
+  Windows desktop), so the title is *not* consulted.
 
 **Tags** — `config.tags` = list of `{name, items[]}`, where an item is
 `{"app": exe}` (the whole app) or `{"app": exe, "file": name}` (one file/site

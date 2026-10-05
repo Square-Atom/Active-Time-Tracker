@@ -154,7 +154,14 @@ class Tracker:
                 app_key = win.exe
                 app_name = config.friendly_name(win.exe)
                 # Read rules live so the file-rules editor applies immediately.
-                file = config.parse_file(win.exe, win.title, self.cfg.merged_rules)
+                rules = self.cfg.merged_rules
+                file = None
+                if rules.get(win.exe) == ["folder"]:
+                    # A file manager: ask the OS for the real folder first;
+                    # None means it can't say, so the title decides below.
+                    file = sysinfo.file_manager_folder(win)
+                if file is None:
+                    file = config.parse_file(win.exe, win.title, rules)
             credit = min(delta, max_credit)
 
             self.storage.add_seconds(

@@ -3,6 +3,16 @@
 All notable changes to Active Time Tracker.
 This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`).
 
+## [Unreleased]
+
+### Added
+- **Time per folder in your file manager.** File Explorer, Finder and the
+  common Linux file managers are now split by the folder you're browsing,
+  instead of being one lump of "File Explorer". Explorer and Finder record the
+  full path; on Linux it's the folder's name from the title bar (or its path,
+  if the file manager shows one there). Right-click the app → **Track folders
+  for this app** to turn it off.
+
 ## [1.8.0] — 2026-09-23
 
 ### Added

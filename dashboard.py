@@ -687,7 +687,9 @@ class Dashboard:
             menu, app, row["file"], row["label"]))
         menu.add_separator()
         self._ctx_track_var = tk.BooleanVar(value=cfg.tracks_files(app))
-        menu.add_checkbutton(label="Track files for this app",
+        # File managers are split by the folder on show, not by file.
+        what = "folders" if app in config.FILE_MANAGERS else "files"
+        menu.add_checkbutton(label=f"Track {what} for this app",
                              variable=self._ctx_track_var,
                              command=lambda: self._ctx_toggle_track([app]))
         menu.add_command(label="Bar colour…",

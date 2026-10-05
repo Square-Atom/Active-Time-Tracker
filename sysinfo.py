@@ -1,11 +1,12 @@
 """Cross-platform system access: foreground window, idle time, single-instance
-lock, "open a folder", the desktop work area, and a global hotkey (Windows
-only for now). Each platform has its own implementation; everything
+lock, "open a folder", the desktop work area, a global hotkey (Windows
+only for now), and the folder a file manager is showing. Each platform has its own implementation; everything
 degrades safely (returns no window / zero idle) if an optional dependency is
 missing, so the app still launches.
 
 Platform dependencies for full functionality:
-  * Windows: none (uses built-in ctypes / Win32).
+  * Windows: none (uses built-in ctypes / Win32). pywin32 is optional and
+             gives File Explorer's full folder path (see winapi.explorer_folder).
   * macOS:   pyobjc  (Quartz + AppKit)  ->  pip install pyobjc
   * Linux:   python-xlib + libXss       ->  pip install python-xlib
              (libXss is usually preinstalled; on Debian/Ubuntu: libxss1)
@@ -48,6 +49,12 @@ if _PLATFORM == "win32":
     def open_path(path: str) -> None:
         import os
         os.startfile(path)  # noqa: S606 - intended
+
+    def file_manager_folder(win: WindowInfo) -> str | None:
+        """See the shared docstring at the bottom of this module."""
+        if win.exe != "explorer.exe":
+            return None
+        return winapi.explorer_folder(win.hwnd, win.title)
 
     def work_area() -> tuple[int, int, int, int] | None:
         return winapi.work_area()
@@ -142,6 +149,45 @@ elif _PLATFORM == "darwin":
 
     def open_path(path: str) -> None:
         subprocess.Popen(["open", path])
+
+    # Finder answers AppleScript, which gives the front window's real path (its
+    # title, when we can read it at all, is only the folder's name). The
+    # script runs in `osascript` rather than in-process because NSAppleScript
+    # wants the main thread and we poll from the tracker's thread.
+    # The first run makes macOS ask "Active Time Tracker wants to control
+    # Finder"; until that's allowed every run fails, so after a failure we wait
+    # a while before trying again rather than spawning osascript every second.
+    _FINDER_SCRIPT = """
+    tell application "Finder"
+        if (count of Finder windows) is 0 then return ""
+        try
+            return POSIX path of (target of front Finder window as alias)
+        on error
+            -- Recents, AirDrop, search results ... have a name but no path.
+            return name of front Finder window
+        end try
+    end tell
+    """
+    _FINDER_RETRY_SECONDS = 60.0
+    _finder_retry_at = 0.0
+
+    def file_manager_folder(win: WindowInfo) -> str | None:
+        """See the shared docstring at the bottom of this module."""
+        global _finder_retry_at
+        import time
+        if win.exe != "finder" or time.monotonic() < _finder_retry_at:
+            return None
+        try:
+            out = subprocess.run(["osascript", "-e", _FINDER_SCRIPT],
+                                 capture_output=True, text=True, timeout=2)
+        except (OSError, subprocess.SubprocessError):
+            out = None
+        if out is None or out.returncode != 0:
+            _finder_retry_at = time.monotonic() + _FINDER_RETRY_SECONDS
+            return None
+        path = out.stdout.strip()
+        # "/Users/hau/Documents/" -> "/Users/hau/Documents" (keep a bare "/").
+        return path.rstrip("/") or path
 
     def work_area() -> tuple[int, int, int, int] | None:
         return None       # callers fall back to the full screen
@@ -242,6 +288,14 @@ else:
     def open_path(path: str) -> None:
         subprocess.Popen(["xdg-open", path])
 
+    def file_manager_folder(win: WindowInfo) -> str | None:
+        """See the shared docstring at the bottom of this module.
+
+        Linux file managers (Nautilus, Dolphin, Thunar, Nemo, ...) offer no
+        way to ask which folder a given window shows, so it's always the
+        window title (`config.parse_folder`)."""
+        return None
+
     def work_area() -> tuple[int, int, int, int] | None:
         return None       # callers fall back to the full screen
 
@@ -271,3 +325,11 @@ def _posix_single_instance(app_id: str) -> bool:
         return False
     _posix_lock_fd = fd  # keep the fd (and lock) alive for the process lifetime
     return True
+
+
+# `file_manager_folder(win)`, defined per platform above:
+#   Ask the OS which folder the focused file manager window is showing.
+#   Returns a full path (or a name for virtual folders like "This PC"); ''
+#   when the window is the file manager's but not a folder view (the Windows
+#   desktop or taskbar); None when we can't ask, in which case the caller reads
+#   the folder from the window title instead (`config.parse_folder`).

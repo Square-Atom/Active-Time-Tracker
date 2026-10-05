@@ -95,6 +95,48 @@ def test_config_changes_apply_without_restart(store, monkeypatch):
     assert "chrome.exe" in apps
 
 
+def _files(store, app):
+    day = today_str()
+    return {f["file"] for f in store.totals_by_file(day, day, app)}
+
+
+def test_file_manager_time_goes_to_the_folder_the_os_reports(store, monkeypatch):
+    _fake_window(monkeypatch, exe="explorer.exe", title="Art - File Explorer")
+    monkeypatch.setattr(sysinfo, "file_manager_folder",
+                        lambda win: r"D:\Projects\Art")
+    _run_briefly(tracker_mod.Tracker(store, _cfg()))
+    assert r"D:\Projects\Art" in _files(store, "explorer.exe")
+
+
+def test_file_manager_falls_back_to_the_title(store, monkeypatch):
+    """When the OS can't say (None), the folder comes from the window title."""
+    _fake_window(monkeypatch, exe="dolphin", title="Music — Dolphin")
+    monkeypatch.setattr(sysinfo, "file_manager_folder", lambda win: None)
+    _run_briefly(tracker_mod.Tracker(store, _cfg()))
+    assert "Music" in _files(store, "dolphin")
+
+
+def test_file_manager_window_that_is_not_a_folder_is_app_level(store, monkeypatch):
+    """'' from the OS (e.g. the Windows desktop) means no folder, not "ask the
+    title" -- the desktop's "Program Manager" title must not become a folder."""
+    _fake_window(monkeypatch, exe="explorer.exe", title="Some Title")
+    monkeypatch.setattr(sysinfo, "file_manager_folder", lambda win: "")
+    _run_briefly(tracker_mod.Tracker(store, _cfg()))
+    assert _files(store, "explorer.exe") == {""}
+
+
+def test_the_os_is_not_asked_when_folder_tracking_is_off(store, monkeypatch):
+    _fake_window(monkeypatch, exe="explorer.exe", title="Art - File Explorer")
+    asked = []
+    monkeypatch.setattr(sysinfo, "file_manager_folder",
+                        lambda win: asked.append(win) or "X")
+    cfg = _cfg()
+    cfg.set_track_files("explorer.exe", False)
+    _run_briefly(tracker_mod.Tracker(store, cfg))
+    assert asked == []
+    assert _files(store, "explorer.exe") == {""}
+
+
 class _Watcher:
     """Stands in for notifications.FocusWatcher."""
 

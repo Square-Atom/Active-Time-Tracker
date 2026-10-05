@@ -15,6 +15,7 @@ credit active time to whatever app was focused, without installing hooks.
 from __future__ import annotations
 
 import ctypes
+import logging
 import os
 from ctypes import wintypes
 from dataclasses import dataclass
@@ -131,6 +132,118 @@ def get_foreground_window() -> WindowInfo | None:
     exe = _process_name(pid.value)
 
     return WindowInfo(hwnd=int(hwnd), title=title, exe=exe, pid=pid.value)
+
+
+# --- File Explorer: which folder is on show ---------------------------------
+# Explorer's window title is only the folder's *name* (unless "Display the full
+# path in the title bar" is on), and on Windows 11 it's localized and may read
+# "Downloads and 2 more tabs". The Shell's own list of open folder windows
+# (Shell.Application -> Windows(), the same list scripts use) gives the real
+# path. That's COM, which we reach through pywin32; without it the caller
+# falls back to the title.
+
+user32.GetClassNameW.restype = ctypes.c_int
+user32.GetClassNameW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+
+# Explorer's folder windows. Its other windows (the desktop "Progman"/
+# "WorkerW", the taskbar "Shell_TrayWnd", ...) aren't browsing a folder.
+EXPLORER_FOLDER_CLASSES = {"CabinetWClass", "ExploreWClass"}
+
+
+def window_class(hwnd: int) -> str:
+    """The window's class name, e.g. "CabinetWClass" for an Explorer window."""
+    buf = ctypes.create_unicode_buffer(256)
+    if not user32.GetClassNameW(hwnd, buf, len(buf)):
+        return ""
+    return buf.value
+
+
+# COM objects belong to the thread that made them, and the tracker polls from
+# its own thread, so the Shell object is kept per thread.
+import threading as _threading  # noqa: E402
+
+_com = _threading.local()
+
+
+def _shell_windows():
+    """The Shell's live list of open folder windows (one entry per tab)."""
+    import pythoncom                 # pywin32; ImportError -> caller falls back
+    import win32com.client.dynamic
+
+    if not getattr(_com, "initialised", False):
+        pythoncom.CoInitialize()     # once per thread, before any COM call
+        _com.initialised = True
+    if getattr(_com, "shell", None) is None:
+        # Dynamic (late-bound) dispatch: no generated wrapper code, so nothing
+        # is written to disk and it works the same in the Nuitka build.
+        _com.shell = win32com.client.dynamic.Dispatch("Shell.Application")
+    return _com.shell.Windows()
+
+
+def _tab_folder(tab) -> tuple[str, str]:
+    """(path, display name) of one Explorer tab. The path is '' for virtual
+    folders such as Home, This PC or the Recycle Bin, which have only a name."""
+    name = str(tab.LocationName or "")
+    path = ""
+    try:
+        path = str(tab.Document.Folder.Self.Path or "")
+    except Exception:
+        pass                         # a view with no folder behind it
+    if path.startswith("::"):        # "::{GUID}" = virtual folder
+        path = ""
+    return path, name
+
+
+def _title_starts_with(title: str, text: str) -> bool:
+    """True when the window title begins with `text` as a whole word, so the
+    tab "Doc" doesn't claim a window titled "Documents - File Explorer"."""
+    return bool(text) and title.startswith(text) and (
+        len(title) == len(text) or title[len(text)] == " ")
+
+
+def explorer_folder(hwnd: int, title: str) -> str | None:
+    """The folder an Explorer window is showing: a full path for real folders,
+    the display name for virtual ones ("This PC").
+
+    '' when the window isn't a folder window (the desktop, the taskbar). None
+    when we can't ask (pywin32 missing, COM failed): fall back to the title.
+    """
+    if window_class(hwnd) not in EXPLORER_FOLDER_CLASSES:
+        return ""
+    try:
+        windows = _shell_windows()
+        # Windows 11 tabs share their window's handle, so several entries can
+        # match. Read every match before deciding which tab is in front.
+        tabs = []
+        for i in range(int(windows.Count)):
+            tab = windows.Item(i)
+            if tab is None:
+                continue
+            try:
+                if int(tab.HWND) != hwnd:
+                    continue
+                tabs.append(_tab_folder(tab))
+            except Exception:
+                continue             # a window closing under us
+    except ImportError:
+        return None
+    except Exception:
+        logging.getLogger(__name__).debug("Explorer folder lookup failed",
+                                          exc_info=True)
+        _com.shell = None            # Explorer restarted? Reconnect next time.
+        return None
+    if not tabs:
+        return None
+    if len(tabs) > 1:
+        # The window is titled after the tab in front: pick the tab whose name
+        # (or path, with the full-path option on) the title starts with,
+        # preferring the longest match.
+        best = max(tabs, key=lambda t: max(
+            len(t[1]) if _title_starts_with(title, t[1]) else -1,
+            len(t[0]) if _title_starts_with(title, t[0]) else -1))
+        tabs = [best]
+    path, name = tabs[0]
+    return path or name
 
 
 # --- global hotkey -------------------------------------------------------

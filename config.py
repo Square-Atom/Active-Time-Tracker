@@ -70,6 +70,14 @@ FRIENDLY_NAMES = {
     "msedge.exe": "Edge",
     "firefox.exe": "Firefox",
     "explorer.exe": "File Explorer",
+    "finder": "Finder",                 # macOS
+    "nautilus": "Files",                # GNOME
+    "dolphin": "Dolphin",               # KDE
+    "thunar": "Thunar",                 # Xfce
+    "nemo": "Nemo",                     # Cinnamon
+    "caja": "Caja",                     # MATE
+    "pcmanfm": "PCManFM",               # LXDE
+    "pcmanfm-qt": "PCManFM-Qt",         # LXQt
     "wt.exe": "Windows Terminal",
     "powershell.exe": "PowerShell",
     "pwsh.exe": "PowerShell",
@@ -206,9 +214,61 @@ def parse_site(title: str) -> str:
     return site
 
 
+# --- file manager "which folder am I in" detection --------------------------
+# File managers title their window after the folder on show. Where the OS lets
+# us ask the file manager directly we get a full path (`sysinfo.
+# file_manager_folder`: Explorer over COM, Finder over AppleScript); otherwise
+# the title is all there is, which is the folder's name, or its full path when
+# the user has turned on the file manager's "full path in title bar" option.
+
+# exe -> the branding the window title ends with (a regex), or "" for file
+# managers whose title is only the folder.
+FILE_MANAGERS: dict[str, str] = {
+    "explorer.exe": r"File\s+Explorer",   # Windows 11 ("Documents - File Explorer")
+    "finder": "",                         # macOS
+    "nautilus": r"Files",                 # GNOME (older versions add "- Files")
+    "dolphin": r"Dolphin",                # KDE ("Documents — Dolphin")
+    "thunar": r"Thunar|File\s+Manager",   # Xfce
+    "nemo": "",                           # Cinnamon
+    "caja": "",                           # MATE
+    "pcmanfm": "",                        # LXDE
+    "pcmanfm-qt": "",                     # LXQt
+}
+
+# "Documents and 2 more tabs" -- Windows 11 Explorer names the other tabs.
+_MORE_TABS_RE = re.compile(r"\s+and\s+\d+\s+more\s+tabs?\s*$", re.IGNORECASE)
+# Windows the file manager owns that aren't a folder view. The desktop belongs
+# to explorer.exe and is titled "Program Manager".
+_NOT_FOLDERS = {"program manager", "file explorer", "files", "dolphin",
+                "thunar", "file manager"}
+
+
+def parse_folder(exe: str, title: str) -> str:
+    """The folder a file manager window shows, read from its title.
+
+    Returns the full path when the title carries one, else the folder's name
+    ("Documents", "This PC"). '' when the title names no folder.
+    """
+    if not title:
+        return ""
+    folder = title.strip()
+    brand = FILE_MANAGERS.get(exe, "")
+    if brand:
+        # Strip " - File Explorer", " — Dolphin", ... Only that exact branding,
+        # so a folder called "Music - Old" keeps its dash.
+        folder = re.sub(rf"\s+[-–—]\s+(?:{brand})\s*$", "", folder,
+                        flags=re.IGNORECASE)
+    folder = _MORE_TABS_RE.sub("", folder).strip()
+    if folder.casefold() in _NOT_FOLDERS:
+        return ""
+    return folder
+
+
 # Per-app rules for extracting the open file from the window title.
 #   list of regex patterns -> first pattern with a named group `file` wins
 #   ["app"]                 -> track at app level only (no per-file split)
+#   ["site"]                -> browsers: split by website (`parse_site`)
+#   ["folder"]              -> file managers: split by folder (`parse_folder`)
 #   (missing / null)        -> use GENERIC_FILE_RE fallback
 DEFAULT_FILE_RULES: dict[str, list[str]] = {
     # Editors that name the workspace/project: capture it as `folder` so two
@@ -261,8 +321,9 @@ DEFAULT_FILE_RULES: dict[str, list[str]] = {
     "google chrome": ["site"],    # macOS binary names
     "firefox": ["site"],
     "microsoft edge": ["site"],
-    # Shell: app-level only (titles are folder names, too noisy).
-    "explorer.exe": ["app"],
+    # File managers: split by the folder being browsed (see `parse_folder`
+    # and `sysinfo.file_manager_folder`, which asks the OS where it can).
+    **{exe: ["folder"] for exe in FILE_MANAGERS},
 }
 
 DEFAULTS = {
@@ -639,6 +700,8 @@ def parse_file(exe: str, title: str, rules: dict[str, list[str]]) -> str:
         return ""
     if patterns == ["site"]:
         return parse_site(title)
+    if patterns == ["folder"]:
+        return parse_folder(exe, title)
     generic = [GENERIC_PATH_RE.pattern, GENERIC_FILE_RE.pattern]
     if patterns == ["auto"] or not patterns:
         use = generic

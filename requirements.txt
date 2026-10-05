@@ -3,6 +3,10 @@
 pystray>=0.19
 Pillow>=10
 
+# Windows: File Explorer's full folder path over COM (optional; without it the
+# folder comes from the window title, which is usually just its name)
+pywin32>=306 ; sys_platform == "win32"
+
 # macOS: frontmost app + idle detection
 pyobjc-framework-Cocoa>=10 ; sys_platform == "darwin"
 pyobjc-framework-Quartz>=10 ; sys_platform == "darwin"
