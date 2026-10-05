@@ -317,3 +317,19 @@ def test_app_groups_are_carried_over_as_tags(tmp_path, monkeypatch):
     cfg = config.load()
     assert cfg.tags == [{"name": "Godot", "items": [{"app": "godot.exe"},
                                                     {"app": "godot_console.exe"}]}]
+
+
+def test_an_old_track_files_override_does_not_block_folders(tmp_path, monkeypatch):
+    """<= 1.8 saved ["auto"] when File Explorer's "Track files" was ticked;
+    that now means "track folders". An explicit ["app"] is left alone."""
+    import json
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"file_rules": {"explorer.exe": ["auto"],
+                                               "nautilus": ["app"],
+                                               "code.exe": ["auto"]}}))
+    monkeypatch.setattr(config, "CONFIG_PATH", str(path))
+    cfg = config.load()
+    assert "explorer.exe" not in cfg.file_rules
+    assert cfg.merged_rules["explorer.exe"] == ["folder"]
+    assert cfg.file_rules["nautilus"] == ["app"]
+    assert cfg.file_rules["code.exe"] == ["auto"]

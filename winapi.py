@@ -226,6 +226,12 @@ def explorer_folder(hwnd: int, title: str) -> str | None:
             except Exception:
                 continue             # a window closing under us
     except ImportError:
+        # Say so once in app.log, so "only folder names" has an explanation.
+        if not getattr(_com, "warned", False):
+            _com.warned = True
+            logging.getLogger(__name__).warning(
+                "pywin32 isn't installed: File Explorer folders are read from "
+                "window titles (names only). pip install pywin32 for full paths.")
         return None
     except Exception:
         logging.getLogger(__name__).debug("Explorer folder lookup failed",

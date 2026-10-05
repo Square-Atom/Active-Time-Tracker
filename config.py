@@ -637,6 +637,21 @@ def _tags_from(stored: dict) -> list[dict]:
     return clean_tags(carried)
 
 
+def _file_rules_from(rules: dict) -> dict:
+    """The stored per-app overrides, minus ones that would block folder tracking.
+
+    Before folders were tracked (<= 1.8), File Explorer was app-level by
+    default, so ticking "Track files" on it saved ["auto"] (generic *file*
+    detection, which finds nothing in a folder name). Anyone who did that
+    wanted it split, so drop the override and let the built-in ["folder"]
+    rule apply. An explicit ["app"] (tracking turned off) is kept.
+    """
+    if not isinstance(rules, dict):
+        return {}
+    return {exe: rule for exe, rule in rules.items()
+            if not (exe in FILE_MANAGERS and rule == ["auto"])}
+
+
 def load() -> Config:
     data = dict(DEFAULTS)
     stored: dict = {}          # only what the file actually said
@@ -653,7 +668,7 @@ def load() -> Config:
         flush_interval_seconds=data.get("flush_interval_seconds", 15),
         autostart=data.get("autostart", True),
         ignore_apps=[a.lower() for a in data.get("ignore_apps", [])],
-        file_rules=data.get("file_rules", {}),
+        file_rules=_file_rules_from(data.get("file_rules", {})),
         # From `stored` for the same reason as the backup interval below: the
         # defaults carry an empty "tags", which would mask an older config.
         tags=_tags_from(stored),
