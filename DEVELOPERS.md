@@ -432,6 +432,18 @@ and rows no tag claims are simply not reported (the Apps view covers those), so
 A `merges` list written by <= 1.6 (the old app groups) is converted to tags the
 first time `config.load()` sees it, one tag per group.
 
+### Tag groups (`tag_groups`)
+
+A list of group names. A tag is filed under one by a `"group": name` key on the
+tag itself, so it can only ever be in one; the list exists so a group can be
+empty, and `config.clean_groups` drops any `group` that isn't in it. The Tags
+window sets it by drag and drop (`Config.set_tag_group`).
+
+`storage.fold_groups` is `fold_tags` with the grouped tags gathered under a
+`{key, name, group, seconds, tags}` row (chart key `group::<name>`), which is
+what the dashboard's Tags mode draws. A group's `seconds` counts each row once
+however many of its tags claim it, so it can be less than its tags add up to.
+
 ### Focus reminders (`notify_*`)
 
 `notifications.FocusWatcher` is fed from the tracker loop, once per tick, with

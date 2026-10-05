@@ -90,6 +90,12 @@ spread across several apps, files and websites.
   something out. **New tag**, **Rename** and **Delete** are under the list, and
   **Sort** puts the tags in **Recent** order (whatever you last filed something
   into, first) or **A–Z**. Your choice is remembered.
+* **Groups** gather related tags. In the tag list press **New group**, then
+  drag a tag by the grip before its name onto the group; drag it back out among
+  the loose tags (or press **✕** beside it with the group selected) to take it
+  out. A tag sits in one group at a time. In **Tags** mode the group gets a row
+  of its own, with its tags inside it and the time they cover in total — time
+  two of its tags share is counted once. Deleting a group keeps its tags.
 * The right-click **Tags** menu is always newest-first, so the tag you were
   just using is at the top.
 * Tagging never changes what was recorded — it's applied when your stats are

@@ -340,6 +340,9 @@ DEFAULTS = {
     "tags": [],
     # How the Tags window lists them: "recent" (newest addition first) or "name".
     "tag_sort": "recent",
+    # Groups a tag can be filed under (one group per tag, on its "group" key).
+    # Listed here so a group can exist before anything is dragged into it.
+    "tag_groups": [],
     "check_updates_on_startup": True,
     # Daily rotating backups of data.db (+ config.json).
     "backup_enabled": True,
@@ -365,6 +368,7 @@ DEFAULTS = {
 }
 
 TAG_PREFIX = "tag::"   # synthetic chart key for a tag row
+GROUP_PREFIX = "group::"   # … and for a group of tags
 BY_RECENT = "recent"   # tag orderings: newest addition first …
 BY_NAME = "name"       # … or A-Z
 
@@ -376,6 +380,10 @@ def _now() -> int:
 
 def tag_key(name: str) -> str:
     return TAG_PREFIX + name
+
+
+def group_key(name: str) -> str:
+    return GROUP_PREFIX + name
 
 
 def item_key(app: str, file: str | None = None) -> tuple[str, str | None]:
@@ -439,7 +447,32 @@ def clean_tags(raw) -> list[dict]:
         created = _stamp(entry.get("created"))
         if created:
             tag["created"] = created
+        group = entry.get("group")
+        if isinstance(group, str) and group.strip():
+            tag["group"] = group.strip()
         out.append(tag)
+    return out
+
+
+def clean_groups(raw, tags: list[dict]) -> list[str]:
+    """Stored group names -> unique ones, and `tags` pointed only at those.
+
+    A tag whose group isn't listed is left ungrouped rather than conjuring the
+    group back; one that is gets the group's own spelling of the name.
+    """
+    out: list[str] = []
+    known: dict[str, str] = {}
+    for name in raw if isinstance(raw, list) else []:
+        name = name.strip() if isinstance(name, str) else ""
+        if name and name.casefold() not in known:
+            known[name.casefold()] = name
+            out.append(name)
+    for tag in tags:
+        group = known.get(tag.get("group", "").casefold())
+        if group:
+            tag["group"] = group
+        else:
+            tag.pop("group", None)
     return out
 
 
@@ -453,6 +486,7 @@ class Config:
     file_rules: dict[str, list[str]] = field(default_factory=dict)
     tags: list[dict] = field(default_factory=list)
     tag_sort: str = BY_RECENT
+    tag_groups: list[str] = field(default_factory=list)
     check_updates_on_startup: bool = True
     backup_enabled: bool = True
     backup_dir: str = ""
@@ -475,6 +509,7 @@ class Config:
             "file_rules": self.file_rules,
             "tags": self.tags,
             "tag_sort": self.tag_sort,
+            "tag_groups": self.tag_groups,
             "check_updates_on_startup": self.check_updates_on_startup,
             "backup_enabled": self.backup_enabled,
             "backup_dir": self.backup_dir,
@@ -588,6 +623,70 @@ class Config:
             return sorted(names, key=lambda n: n.casefold())
         return sorted(names, key=lambda n: -self.tag_recency(n))
 
+    # -- tag groups -------------------------------------------------------
+
+    def _find_group(self, name: str) -> str | None:
+        """The stored spelling of a group's name, or None if there's no such."""
+        fold = (name or "").strip().casefold()
+        for group in self.tag_groups:
+            if fold and group.casefold() == fold:
+                return group
+        return None
+
+    def create_group(self, name: str) -> str:
+        """Add an empty group, returning the name it actually got."""
+        base = (name or "").strip() or "New group"
+        candidate, n = base, 2
+        while self._find_group(candidate):
+            candidate = f"{base} ({n})"
+            n += 1
+        self.tag_groups.append(candidate)
+        return candidate
+
+    def delete_group(self, name: str) -> None:
+        """Drop the group; its tags stay, ungrouped."""
+        group = self._find_group(name)
+        if group is None:
+            return
+        for tag in self.tags:
+            if tag.get("group") == group:
+                del tag["group"]
+        self.tag_groups.remove(group)
+
+    def rename_group(self, name: str, new_name: str) -> str:
+        """Rename in place, returning the name used ('' if it wasn't possible)."""
+        group = self._find_group(name)
+        new = (new_name or "").strip()
+        if group is None or not new:
+            return ""
+        if self._find_group(new) not in (None, group):
+            return ""
+        for tag in self.tags:
+            if tag.get("group") == group:
+                tag["group"] = new
+        self.tag_groups[self.tag_groups.index(group)] = new
+        return new
+
+    def tag_group(self, name: str) -> str:
+        """The group a tag is filed under, '' when it's in none."""
+        tag = self._find_tag(name)
+        return (self._find_group(tag.get("group", "")) or "") if tag else ""
+
+    def set_tag_group(self, name: str, group: str | None) -> None:
+        """File a tag under a group, or (None / '') take it out of its group."""
+        tag = self._find_tag(name)
+        if not tag:
+            return
+        target = self._find_group(group or "")
+        if target:
+            tag["group"] = target
+        else:
+            tag.pop("group", None)
+
+    def group_tags(self, group: str, sort: str | None = None) -> list[str]:
+        """The tags in one group ('' = the ungrouped ones), in display order."""
+        return [n for n in self.tag_order(sort) if self.tag_group(n) == group]
+
     def tracks_files(self, exe: str) -> bool:
         """Whether this app is currently split by file (vs. app-level only)."""
         return self.merged_rules.get(exe.lower()) != ["app"]
@@ -662,6 +761,7 @@ def load() -> Config:
             data.update(stored)
         except (json.JSONDecodeError, OSError):
             pass  # fall back to defaults on a corrupt config
+    tags = _tags_from(stored)
     cfg = Config(
         idle_timeout_seconds=data.get("idle_timeout_seconds", 10),
         poll_interval_seconds=data.get("poll_interval_seconds", 1.0),
@@ -671,9 +771,10 @@ def load() -> Config:
         file_rules=_file_rules_from(data.get("file_rules", {})),
         # From `stored` for the same reason as the backup interval below: the
         # defaults carry an empty "tags", which would mask an older config.
-        tags=_tags_from(stored),
+        tags=tags,
         tag_sort=(data.get("tag_sort") if data.get("tag_sort") in
                   (BY_RECENT, BY_NAME) else BY_RECENT),
+        tag_groups=clean_groups(data.get("tag_groups"), tags),
         check_updates_on_startup=data.get("check_updates_on_startup", True),
         backup_enabled=data.get("backup_enabled", True),
         backup_dir=data.get("backup_dir", ""),

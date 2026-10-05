@@ -6,6 +6,12 @@ This project uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH
 ## [Unreleased]
 
 ### Added
+- **Tag groups.** The Tags window has a **New group** button, and every tag
+  now has a grip before its name: drag it onto a group to file the tag there,
+  and back out among the loose tags to take it out. In the list's **Tags**
+  mode a group is a row of its own with its tags inside it (click it to fold
+  them away) and the total time they cover — counted once where two of its
+  tags share it. Deleting a group leaves its tags as they were.
 - **Time per folder in your file manager.** File Explorer, Finder and the
   common Linux file managers are now split by the folder you're browsing,
   instead of being one lump of "File Explorer". Explorer and Finder record the

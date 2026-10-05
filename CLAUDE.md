@@ -43,7 +43,7 @@ Credit per tick is capped so sleep/wake gaps can't dump a huge chunk onto one ap
 | `notifications.py` | Focus reminders: the timing (`FocusWatcher`) and the click-to-add-a-note popup (`Toast`) |
 | `settings.py` | Tabbed Settings window (General, Ignored apps, Backup, Timeline, Notifications, About) |
 | `ignoreapps.py` | Ignored-apps manager window |
-| `tags.py` | Tags window (what each tag holds) + the shared tag-name prompt |
+| `tags.py` | Tags window (what each tag holds, tag groups by drag and drop) + the shared tag-name prompt |
 | `recordedit.py` | "Edit record" window: move a record's time to another name (duration parsing) |
 | `appicon.py` | Clock icon shared by tray, window, and the built .exe |
 | `backups.py` | Daily rotating backups (location, rotation, scheduling) |
@@ -120,6 +120,12 @@ counted once within one tag. Tags with no time in the range are left out, and
 untagged time isn't reported at all (that's the Apps view's job), so the tag
 rows don't add up to the grand total in either direction.
 `config.load()` carries a <= 1.6 `merges` list over into tags.
+
+**Tag groups** — `config.tag_groups` = list of names; a tag joins one through
+its own `"group"` key (so one group per tag), set by dragging the tag's grip
+in the Tags window. `storage.fold_groups` nests grouped tags under a
+`group::<name>` row for the dashboard; a group's total counts a row once even
+when several of its tags claim it.
 
 ## Conventions
 

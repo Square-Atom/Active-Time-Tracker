@@ -17,7 +17,7 @@ from tkinter import messagebox, ttk
 
 import config
 import timeline
-from storage import Storage, fold_tags
+from storage import Storage, fold_groups
 
 # --- theme ---------------------------------------------------------------
 BG = "#1e1f2b"
@@ -270,6 +270,8 @@ class Dashboard:
         self.expanded: set[str] = set()   # app keys whose files are shown
         # Kept per mode: switching back should find the list as you left it.
         self.expanded_tags: set[str] = set()
+        # Groups start open — their tags are the point — so track the shut ones.
+        self.collapsed_groups: set[str] = set()
         self._refresh_job = None
         self._visible = False
         self._trend_height = 190  # default trend pane height (drag-adjustable)
@@ -454,7 +456,7 @@ class Dashboard:
             color_for=self._color_for)
 
         self._data_apps: list[dict] = []
-        self._data_tags: list[dict] = []               # one row per tag in range
+        self._data_tags: list[dict] = []               # tags and groups in range
         self._data_files: dict[str, list[dict]] = {}   # app key -> its files
         self._data_trend: dict[str, float] = {}
         self._grand = 0.0
@@ -599,7 +601,8 @@ class Dashboard:
         if not row or not row["expandable"]:
             return None                     # nothing to expand
         self._tag_tip.hide()
-        expanded = self.expanded_tags if row["kind"] == "tag" else self.expanded
+        expanded = {"tag": self.expanded_tags,
+                    "group": self.collapsed_groups}.get(row["kind"], self.expanded)
         key = row["key"]
         if key in expanded:
             expanded.discard(key)
@@ -666,7 +669,12 @@ class Dashboard:
         if not row:
             return
         menu = self._menu()
-        if row["kind"] in ("tag", "item"):
+        if row["kind"] == "group":
+            menu.add_command(
+                label="Bar colour…",
+                command=lambda: self._open_color_picker(
+                    row["key"], row["label"], event.x_root, event.y_root))
+        elif row["kind"] in ("tag", "item"):
             self._fill_tag_menu(menu, row, event)
         else:
             self._fill_app_menu(menu, cfg, row, event)
@@ -923,10 +931,12 @@ class Dashboard:
             # its sum is the grand total — tag totals overlap, so they can't be.
             rows = self.storage.totals_by_app_file(start, end, ignore)
             self._data_apps = []
-            self._data_tags = fold_tags(rows, cfg.tags if cfg else [])
+            self._data_tags = fold_groups(rows, cfg.tags if cfg else [],
+                                          cfg.tag_groups if cfg else [])
             self._grand = sum(r["seconds"] for r in rows)
             # Forget expansions for rows this range no longer has.
-            self.expanded_tags &= {t["key"] for t in self._data_tags}
+            self.expanded_tags &= {t["key"] for top in self._data_tags
+                                   for t in top.get("tags", [top])}
         else:
             self._data_apps = self.storage.totals_by_app(start, end, ignore)
             self._data_tags = []
@@ -1091,37 +1101,58 @@ class Dashboard:
     def _tag_rows(self) -> list[dict]:
         """One row per tag with time in this range, expanding to its items.
 
-        Percentages are of the grand total, not of each other: an item can be
-        in several tags and untagged time isn't listed, so these don't add up
-        to 100% either way.
+        Grouped tags sit under a row for their group, which carries the
+        group's total. Percentages are of the grand total, not of each other:
+        an item can be in several tags and untagged time isn't listed, so
+        these don't add up to 100% either way.
         """
         rows: list[dict] = []
-        for tag in self._data_tags:
-            key = tag["key"]
-            rows.append({
-                "kind": "tag", "key": key, "label": tag["name"],
-                "tag": tag["tag"], "app": None, "file": None, "tags": [],
-                "seconds": tag["seconds"],
-                "pct": (tag["seconds"] / self._grand * 100) if self._grand else 0,
-                "color": self._color_for(key),
-                "expandable": bool(tag["items"]),
-                "expanded": key in self.expanded_tags,
-            })
-            if key not in self.expanded_tags:
+        for top in self._data_tags:
+            if "tags" not in top:
+                self._add_tag_rows(rows, top, 0)
                 continue
-            total = tag["seconds"] or 1
-            for item in tag["items"]:
-                rows.append({
-                    "kind": "item", "key": item["key"], "label": item["label"],
-                    "tag": tag["tag"], "app": item["app"], "file": item["file"],
-                    "app_name": item["app_name"],
-                    "tags": self._tags_of(item["app"], item["file"]),
-                    "seconds": item["seconds"],
-                    "pct": item["seconds"] / total * 100,
-                    "color": _blend(self._color_for(key), PANEL, 0.45),
-                    "expandable": False, "expanded": False,
-                })
+            key = top["key"]
+            collapsed = key in self.collapsed_groups
+            rows.append({
+                "kind": "group", "key": key, "label": top["name"],
+                "tag": None, "app": None, "file": None, "tags": [],
+                "seconds": top["seconds"],
+                "pct": (top["seconds"] / self._grand * 100) if self._grand else 0,
+                "color": self._color_for(key), "depth": 0,
+                "expandable": True, "expanded": not collapsed,
+            })
+            if not collapsed:
+                for tag in top["tags"]:
+                    self._add_tag_rows(rows, tag, 1)
         return rows
+
+    def _add_tag_rows(self, rows: list[dict], tag: dict, depth: int) -> None:
+        """A tag's row, and its items' when it's expanded, `depth` levels in."""
+        key = tag["key"]
+        rows.append({
+            "kind": "tag", "key": key, "label": tag["name"],
+            "tag": tag["tag"], "app": None, "file": None, "tags": [],
+            "seconds": tag["seconds"],
+            "pct": (tag["seconds"] / self._grand * 100) if self._grand else 0,
+            "color": self._color_for(key), "depth": depth,
+            "expandable": bool(tag["items"]),
+            "expanded": key in self.expanded_tags,
+        })
+        if key not in self.expanded_tags:
+            return
+        total = tag["seconds"] or 1
+        for item in tag["items"]:
+            rows.append({
+                "kind": "item", "key": item["key"], "label": item["label"],
+                "tag": tag["tag"], "app": item["app"], "file": item["file"],
+                "app_name": item["app_name"],
+                "tags": self._tags_of(item["app"], item["file"]),
+                "seconds": item["seconds"],
+                "pct": item["seconds"] / total * 100,
+                "color": _blend(self._color_for(key), PANEL, 0.45),
+                "depth": depth + 1,
+                "expandable": False, "expanded": False,
+            })
 
     def _draw_chart(self) -> None:
         c = self.chart
@@ -1148,7 +1179,7 @@ class Dashboard:
         bar_right = w - pad - pct_w - time_w
         bar_max = max(16, bar_right - bar_x0 - gap)
         maxv = max((r["seconds"] for r in rows
-                    if r["kind"] in ("app", "tag")), default=0) or 1
+                    if r["kind"] in ("app", "tag", "group")), default=0) or 1
 
         font = ("Segoe UI", 9)
         min_row, vpad = 26, 10
@@ -1157,7 +1188,7 @@ class Dashboard:
             is_file = row["kind"] in ("file", "item")
             # The expander gets its own column so every name starts at the same
             # x, whether or not the row can be expanded.
-            indent = FILE_INDENT if is_file else 0
+            indent = FILE_INDENT * row.get("depth", 1 if is_file else 0)
             name_x = pad + MARKER_W + indent
             # Measure the wrapped name first so the row can grow to fit it.
             # Wrap a little narrower than the column: Tk overshoots slightly
@@ -1165,7 +1196,8 @@ class Dashboard:
             text_id = c.create_text(
                 name_x, y, text=row["label"], anchor="nw",
                 fill=MUTED if is_file else FG,
-                width=max(40, name_w - MARKER_W - indent - 10), font=font)
+                width=max(40, name_w - MARKER_W - indent - 10),
+                font=("Segoe UI Semibold", 9) if row["kind"] == "group" else font)
             x0, y0, x1, y1 = c.bbox(text_id)
             row_h = max(min_row, (y1 - y0) + vpad)
 
@@ -1176,7 +1208,8 @@ class Dashboard:
 
             mid = y + row_h / 2
             if row["expandable"]:
-                c.create_text(pad + 3, mid, text="▾" if row["expanded"] else "▸",
+                c.create_text(pad + 3 + indent, mid,
+                              text="▾" if row["expanded"] else "▸",
                               fill=MUTED, anchor="w", font=font)
             row["tag_hit"] = None
             if row["tags"]:

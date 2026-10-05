@@ -96,7 +96,7 @@ def item_label(app_name: str, file: str | None) -> str:
     return f"{file or '(no file)'}  ·  {app_name}"
 
 
-def fold_tags(rows, tags) -> list[dict]:
+def _fold(rows, tags) -> tuple[list[dict], dict[str, float]]:
     """Fold (app, file) totals into one row per tag, busiest first.
 
     `rows` are `totals_by_app_file` results; `tags` is `config.Config.tags`.
@@ -108,10 +108,13 @@ def fold_tags(rows, tags) -> list[dict]:
     Only tags with time in this range come back: a tag you didn't touch has
     nothing to say about the range, and untagged time isn't reported here at
     all — that's what the Apps view shows.
+
+    Also returns seconds per group name. A group counts each row once however
+    many of its tags claim it, for the same reason a tag does: it's time
+    spent, not a tally.
     """
-    if not tags:
-        return []
     folded = []
+    group_seconds: dict[str, float] = defaultdict(float)
     for tag in tags:
         name = tag.get("name", "")
         apps, files = set(), set()
@@ -119,11 +122,13 @@ def fold_tags(rows, tags) -> list[dict]:
             app, file = config.item_key(entry.get("app", ""), entry.get("file"))
             (apps if file is None else files).add(app if file is None else (app, file))
         folded.append({"key": config.tag_key(name), "name": name,
+                       "group": tag.get("group", ""),
                        "seconds": 0.0, "apps": apps, "files": files,
                        "parts": defaultdict(float), "names": {}})
 
     for row in rows:
         app, file, seconds = row["app"], row["file"], row["seconds"]
+        groups = set()
         for tag in folded:
             if app in tag["apps"]:
                 part = (app, None)          # the whole app covers this row
@@ -134,6 +139,10 @@ def fold_tags(rows, tags) -> list[dict]:
             tag["seconds"] += seconds
             tag["parts"][part] += seconds
             tag["names"][app] = row["app_name"]
+            if tag["group"]:
+                groups.add(tag["group"])
+        for group in groups:
+            group_seconds[group] += seconds
 
     out = []
     for tag in folded:
@@ -147,7 +156,39 @@ def fold_tags(rows, tags) -> list[dict]:
                           "key": f"{tag['key']}\x00{app}\x00{'' if file is None else file}"})
         items.sort(key=lambda i: i["seconds"], reverse=True)
         out.append({"key": tag["key"], "name": tag["name"], "tag": tag["name"],
+                    "group": tag["group"],
                     "seconds": tag["seconds"], "items": items})
+    out.sort(key=lambda t: t["seconds"], reverse=True)
+    return out, group_seconds
+
+
+def fold_tags(rows, tags) -> list[dict]:
+    """One row per tag with time in `rows` (see `_fold`), groups set aside."""
+    return _fold(rows, tags)[0]
+
+
+def fold_groups(rows, tags, groups) -> list[dict]:
+    """`fold_tags`, with grouped tags gathered under a row for their group.
+
+    Ungrouped tags come back as `fold_tags` gives them; a group is
+    `{key, name, group, seconds, tags}` holding its tags busiest first, and
+    sorts among the loose tags by its own total. That total counts a row once
+    even when several of the group's tags claim it, so it can be less than
+    the tags under it add up to. A group with no time in the range is left
+    out, like a tag.
+    """
+    folded, seconds = _fold(rows, tags)
+    known = set(groups or [])
+    members: dict[str, list[dict]] = defaultdict(list)
+    out = []
+    for tag in folded:
+        if tag["group"] in known:
+            members[tag["group"]].append(tag)
+        else:
+            out.append(tag)
+    for name, inside in members.items():
+        out.append({"key": config.group_key(name), "name": name, "group": name,
+                    "seconds": seconds[name], "tags": inside})
     out.sort(key=lambda t: t["seconds"], reverse=True)
     return out
 

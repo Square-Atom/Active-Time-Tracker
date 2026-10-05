@@ -246,6 +246,60 @@ def test_deleting_a_tag_leaves_the_others_alone():
     assert cfg.tag_names() == ["Play"]
 
 
+def test_a_tag_sits_in_one_group_at_a_time():
+    cfg = config.Config()
+    cfg.create_tag("Work")
+    assert cfg.create_group("Projects") == "Projects"
+    assert cfg.create_group("projects") == "projects (2)", "names stay unique"
+    cfg.set_tag_group("Work", "Projects")
+    cfg.set_tag_group("Work", "projects (2)")
+    assert cfg.tag_group("Work") == "projects (2)"
+    assert cfg.group_tags("Projects") == []
+
+    cfg.set_tag_group("Work", "No such group")     # same as taking it out
+    assert cfg.tag_group("Work") == ""
+    assert cfg.group_tags("") == ["Work"]
+
+
+def test_renaming_and_deleting_a_group_carry_its_tags():
+    cfg = config.Config()
+    cfg.create_tag("Work")
+    cfg.create_tag("Play")
+    cfg.create_group("Projects")
+    cfg.create_group("Other")
+    cfg.set_tag_group("Work", "Projects")
+
+    assert cfg.rename_group("Projects", "Other") == "", "a clash is refused"
+    assert cfg.rename_group("Projects", "Clients") == "Clients"
+    assert cfg.tag_group("Work") == "Clients"
+
+    cfg.rename_tag("Work", "Job")                   # the tag keeps its group
+    assert cfg.group_tags("Clients") == ["Job"]
+
+    cfg.delete_group("Clients")
+    assert cfg.tag_groups == ["Other"]
+    assert cfg.tag_group("Job") == ""
+    assert sorted(cfg.tag_names()) == ["Job", "Play"]
+
+
+def test_groups_survive_a_save_and_drop_what_they_cannot_place(tmp_path,
+                                                               monkeypatch):
+    monkeypatch.setattr(config, "CONFIG_PATH", str(tmp_path / "config.json"))
+    cfg = config.Config()
+    cfg.create_tag("Work")
+    cfg.create_tag("Stray")
+    cfg.create_group("Projects")
+    cfg.create_group("Empty")
+    cfg.set_tag_group("Work", "Projects")
+    cfg.tags[1]["group"] = "Gone"                   # a group nobody lists
+    cfg.save()
+
+    loaded = config.load()
+    assert loaded.tag_groups == ["Projects", "Empty"], "an empty group is kept"
+    assert loaded.tag_group("Work") == "Projects"
+    assert loaded.tag_group("Stray") == ""
+
+
 def test_tags_can_be_ordered_by_recent_addition_or_by_name(monkeypatch):
     clock = {"t": 100}
     monkeypatch.setattr(config, "_now", lambda: clock["t"])

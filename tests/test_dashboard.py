@@ -474,6 +474,33 @@ def test_a_tag_expands_to_what_is_in_it(dash, tk_root, store, cfg, today):
     assert any(r["kind"] == "item" for r in dash._rows)
 
 
+def test_a_group_row_holds_its_tags_and_their_total(dash, tk_root, store,
+                                                    cfg, today):
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
+    store.add_seconds(today, "chrome.exe", "Chrome", "GitHub", 50)
+    store.add_seconds(today, "game.exe", "Game", "", 30)
+    cfg.set_item_tag("Coding", "code.exe", None, True)
+    cfg.set_item_tag("Review", "chrome.exe", "GitHub", True)
+    cfg.set_item_tag("Fun", "game.exe", None, True)
+    cfg.create_group("Work")
+    cfg.set_tag_group("Coding", "Work")
+    cfg.set_tag_group("Review", "Work")
+
+    dash._set_chart_mode(TAGS); _drawn(dash, tk_root)
+    shown = lambda: [(r["kind"], r["label"], r["seconds"], r["depth"])
+                     for r in dash._rows]
+    assert shown() == [("group", "Work", 150, 0), ("tag", "Coding", 100, 1),
+                       ("tag", "Review", 50, 1), ("tag", "Fun", 30, 0)]
+
+    # a tag inside the group still opens onto its items, one level further in
+    _click(dash, "tag::Coding"); _drawn(dash, tk_root)
+    assert ("item", "VS Code", 100, 2) in shown()
+
+    # and the group folds shut around all of it
+    _click(dash, "group::Work"); _drawn(dash, tk_root)
+    assert shown() == [("group", "Work", 150, 0), ("tag", "Fun", 30, 0)]
+
+
 def test_tagging_from_the_chart_reaches_the_config_and_the_view(
         dash, tk_root, store, cfg, today):
     store.add_seconds(today, "chrome.exe", "Chrome", "GitHub", 50)

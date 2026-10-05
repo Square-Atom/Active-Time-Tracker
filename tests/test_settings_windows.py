@@ -280,6 +280,24 @@ def _item_rows(win):
     return win.items_inner.winfo_children()
 
 
+def _listed(win, kind="tag"):
+    """Names in the left-hand list, top to bottom."""
+    return [r["name"] for r in win._rows if r["kind"] == kind]
+
+
+def _at(win, name, on_grip=False):
+    """A pointer event over a row of the left-hand list (or its drag grip)."""
+    row = next(r for r in win._rows if r["name"] == name)
+    x = win._name_x(row) - 4 if on_grip else win._name_x(row) + 4
+    return types.SimpleNamespace(x=x, y=row["y0"] + 2)
+
+
+def _drag(win, name, onto):
+    win._press(_at(win, name, on_grip=True))
+    win._drag_motion(_at(win, onto))
+    win._release()
+
+
 def test_new_tag_is_created_and_selected(tagwin, tk_root, cfg, monkeypatch):
     import tags as tags_mod
     monkeypatch.setattr(tags_mod, "ask_tag_name", lambda *a, **k: "Work")
@@ -288,7 +306,7 @@ def test_new_tag_is_created_and_selected(tagwin, tk_root, cfg, monkeypatch):
 
     assert cfg.tag_names() == ["Work"]
     assert tagwin.current == "Work"
-    assert tagwin.taglist.get(0).startswith("Work")
+    assert _listed(tagwin) == ["Work"]
 
 
 def test_items_are_listed_with_a_remove_button(tagwin, tk_root, cfg):
@@ -299,7 +317,7 @@ def test_items_are_listed_with_a_remove_button(tagwin, tk_root, cfg):
 
     labels = [w.winfo_children()[0].cget("text") for w in _item_rows(tagwin)]
     assert labels == ["main.py  ·  VS Code", "VS Code"]
-    assert tagwin.taglist.get(0) == "Work  ·  2"
+    assert [r["label"] for r in tagwin._rows] == ["Work  ·  2"]
 
     tagwin._remove("code.exe", "main.py")
     tk_root.update_idletasks()
@@ -317,8 +335,7 @@ def test_sort_buttons_reorder_the_list_and_stick(tagwin, tk_root, cfg,
     tagwin._populate_tags(select=None)
     tk_root.update_idletasks()
 
-    listed = lambda: [tagwin.taglist.get(i).split("  ·")[0]
-                      for i in range(tagwin.taglist.size())]
+    listed = lambda: _listed(tagwin)
     assert listed() == ["Zebra", "Apple"], "newest addition first by default"
 
     tagwin._set_sort(config.BY_NAME)
@@ -327,9 +344,7 @@ def test_sort_buttons_reorder_the_list_and_stick(tagwin, tk_root, cfg,
     assert cfg.tag_sort == config.BY_NAME, "the choice is saved, not just applied"
 
     # …and the selection still points at the tag the row now holds
-    tagwin.taglist.selection_clear(0, "end")
-    tagwin.taglist.selection_set(0)
-    tagwin._on_tag_select()
+    tagwin._press(types.SimpleNamespace(x=60, y=2))
     assert tagwin.current == "Apple"
 
 
@@ -347,6 +362,111 @@ def test_deleting_a_tag_asks_first(tagwin, tk_root, cfg, monkeypatch):
     tk_root.update_idletasks()
     assert cfg.tag_names() == []
     assert tagwin.current is None
+
+
+# --- tag groups --------------------------------------------------------------
+
+@pytest.fixture
+def grouped(tagwin, tk_root, cfg):
+    """Two tags and an empty group, "Projects"."""
+    cfg.set_item_tag("Work", "code.exe", None, True)
+    cfg.set_item_tag("Play", "code.exe", "main.py", True)
+    cfg.create_group("Projects")
+    tagwin._populate_tags(select="Work")
+    tk_root.update_idletasks()
+    return tagwin
+
+
+def test_new_group_is_created_and_selected(tagwin, tk_root, cfg, monkeypatch):
+    import tags as tags_mod
+    monkeypatch.setattr(tags_mod, "ask_tag_name", lambda *a, **k: "Projects")
+    tagwin._new_group()
+    tk_root.update_idletasks()
+
+    assert cfg.tag_groups == ["Projects"]
+    assert tagwin.current_group == "Projects" and tagwin.current is None
+    assert _listed(tagwin, "group") == ["Projects"]
+
+
+def test_dragging_a_tag_by_its_grip_files_it_under_a_group(grouped, cfg):
+    _drag(grouped, "Work", onto="Projects")
+    assert cfg.tag_group("Work") == "Projects"
+    assert cfg.tag_group("Play") == ""
+    # the group's tags are listed straight under it, the loose ones after
+    assert [(r["kind"], r["name"]) for r in grouped._rows] == [
+        ("group", "Projects"), ("tag", "Work"), ("tag", "Play")]
+    assert grouped.current == "Work", "the dragged tag stays selected"
+
+
+def test_dropping_on_a_grouped_tag_joins_its_group(grouped, cfg):
+    _drag(grouped, "Work", onto="Projects")
+    _drag(grouped, "Play", onto="Work")
+    assert cfg.group_tags("Projects", config.BY_NAME) == ["Play", "Work"]
+
+
+def test_dragging_a_tag_back_out_ungroups_it(grouped, cfg):
+    _drag(grouped, "Work", onto="Projects")
+    _drag(grouped, "Work", onto="Play")          # a loose tag: no group
+    assert cfg.tag_group("Work") == ""
+
+    # with every tag grouped there's still somewhere to drop it
+    _drag(grouped, "Work", onto="Projects")
+    _drag(grouped, "Play", onto="Projects")
+    grouped._press(_at(grouped, "Play", on_grip=True))
+    grouped._drag_motion(_at(grouped, "Projects"))
+    hint = grouped._rows[-1]
+    assert hint["kind"] == "hint" and hint["group"] == ""
+    grouped._drag_motion(types.SimpleNamespace(x=40, y=hint["y0"] + 2))
+    grouped._release()
+    assert cfg.tag_group("Play") == ""
+    assert cfg.tag_group("Work") == "Projects"
+
+
+def test_only_the_grip_starts_a_drag(grouped, cfg):
+    grouped._press(_at(grouped, "Work"))         # on the name: just a click
+    grouped._drag_motion(_at(grouped, "Projects"))
+    grouped._release()
+    assert cfg.tag_group("Work") == ""
+    assert grouped.current == "Work"
+
+
+def test_a_selected_group_lists_its_tags_with_a_way_out(grouped, tk_root, cfg):
+    _drag(grouped, "Work", onto="Projects")
+    grouped._press(_at(grouped, "Projects"))
+    tk_root.update_idletasks()
+    labels = [w.winfo_children()[0].cget("text") for w in _item_rows(grouped)]
+    assert labels == ["Work"]
+
+    grouped._ungroup("Work")
+    assert cfg.tag_group("Work") == ""
+    assert cfg.tag_names() == ["Work", "Play"], "the tag itself is untouched"
+    assert grouped.current_group == "Projects"
+
+
+def test_deleting_a_group_keeps_its_tags(grouped, cfg, monkeypatch):
+    from tkinter import messagebox
+    _drag(grouped, "Work", onto="Projects")
+    grouped._press(_at(grouped, "Projects"))
+
+    monkeypatch.setattr(messagebox, "askyesno", lambda *a, **k: True)
+    grouped._delete()
+    assert cfg.tag_groups == []
+    assert cfg.tag_group("Work") == ""
+    assert sorted(cfg.tag_names()) == ["Play", "Work"]
+
+
+def test_renaming_a_group_takes_its_tags_and_colour_along(grouped, cfg,
+                                                          monkeypatch):
+    import tags as tags_mod
+    _drag(grouped, "Work", onto="Projects")
+    cfg.app_colors[config.group_key("Projects")] = "#123456"
+    grouped._press(_at(grouped, "Projects"))
+
+    monkeypatch.setattr(tags_mod, "ask_tag_name", lambda *a, **k: "Clients")
+    grouped._rename()
+    assert cfg.tag_groups == ["Clients"]
+    assert cfg.tag_group("Work") == "Clients"
+    assert cfg.app_colors == {config.group_key("Clients"): "#123456"}
 
 
 # --- timeline tab ------------------------------------------------------------

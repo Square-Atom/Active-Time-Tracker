@@ -75,6 +75,44 @@ def test_a_tagged_app_counts_its_files_once_even_if_they_are_tagged_too(
     assert [(i["file"], i["seconds"]) for i in tag["items"]] == [(None, 120)]
 
 
+def test_a_group_gathers_its_tags_and_totals_their_time(store, today):
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
+    store.add_seconds(today, "chrome.exe", "Chrome", "GitHub", 50)
+    store.add_seconds(today, "game.exe", "Game", "", 30)
+    cfg = config.Config()
+    cfg.set_item_tag("Coding", "code.exe", None, True)
+    cfg.set_item_tag("Review", "chrome.exe", "GitHub", True)
+    cfg.set_item_tag("Fun", "game.exe", None, True)
+    cfg.create_group("Work")
+    cfg.create_group("Unused")
+    cfg.set_tag_group("Coding", "Work")
+    cfg.set_tag_group("Review", "Work")
+
+    rows = storage.fold_groups(
+        store.totals_by_app_file(today, today), cfg.tags, cfg.tag_groups)
+    assert [(r["name"], r["seconds"]) for r in rows] == [("Work", 150), ("Fun", 30)]
+    assert [(t["name"], t["seconds"]) for t in rows[0]["tags"]] == [
+        ("Coding", 100), ("Review", 50)]
+    assert "tags" not in rows[1], "a loose tag comes back as fold_tags gives it"
+
+
+def test_a_group_counts_time_two_of_its_tags_share_only_once(store, today):
+    """The group total is time spent, like a tag's — not its tags added up."""
+    store.add_seconds(today, "code.exe", "VS Code", "main.py", 100)
+    store.add_seconds(today, "code.exe", "VS Code", "notes.md", 20)
+    cfg = config.Config()
+    cfg.set_item_tag("Coding", "code.exe", None, True)
+    cfg.set_item_tag("Python", "code.exe", "main.py", True)
+    cfg.create_group("Work")
+    cfg.set_tag_group("Coding", "Work")
+    cfg.set_tag_group("Python", "Work")
+
+    group, = storage.fold_groups(
+        store.totals_by_app_file(today, today), cfg.tags, cfg.tag_groups)
+    assert group["seconds"] == 120
+    assert [t["seconds"] for t in group["tags"]] == [120, 100]
+
+
 def test_a_tag_with_no_time_in_the_range_is_left_out(store, today):
     """A tag you didn't touch has nothing to say about the range."""
     store.add_seconds(today, "code.exe", "VS Code", "", 100)
